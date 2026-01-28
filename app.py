@@ -5,7 +5,7 @@ different app modes.
 
 """
 <<<<<<< HEAD
-'test'
+"je suis le plus intelligent du monde"
 =======
 "test"
 
