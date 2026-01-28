@@ -4,7 +4,12 @@ Contains most of the functions governing the
 different app modes.
 
 """
+<<<<<<< HEAD
 'test'
+=======
+"test"
+
+>>>>>>> 4fe6643b281fc64aff079b2e441e235719137bb4
 import os
 
 import streamlit as st
