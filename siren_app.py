@@ -127,9 +127,16 @@ def run_siren_simulation(omega_val, bias_val, n_layers_sim):
 
 def main():
     st.set_page_config(page_title="SIREN Diagnostics", layout="wide")
-    st.title("🔬 Étude des Réseaux SIREN")
+    st.title("Étude des Réseaux SIREN")
     
-    app_mode = st.segmented_control("Menu", ["Accueil", "Initialisation", "Image Fitting"], default="Accueil")
+    # --- NAVIGATION LATÉRALE ---
+    with st.sidebar:
+        st.title("Navigation")
+        app_mode = st.radio(
+            "Choisir un module :",
+            ["Accueil", "Initialisation", "Image Fitting"]
+        )
+        st.divider() # Petite ligne de séparation
 
     if app_mode == "Accueil":
         st.subheader("Représentations Neuronales Implicites")
@@ -141,11 +148,45 @@ def main():
         """)
 
     elif app_mode == "Initialisation":
-        st.title("Étude Empirique de l'Initialisation")
-        w0 = st.sidebar.select_slider("Fréquence (w0)", options=[1, 30], value=30)
-        b_val = st.sidebar.select_slider("Biais (b)", options=[0, 1000, "uniforme"], value=0)
-        layers = st.sidebar.number_input("Nombre de couches", 1, 6, 3)
-        run_siren_simulation(w0, b_val, layers)
+        st.title("🔬 Étude Empirique de l'Initialisation")
+        
+        # Sous-menu horizontal pour l'analyse
+        sub_mode = st.segmented_control(
+            "Analyse souhaitée :",
+            ["Paramètres", "Distribution des couches", "Spectre", "Distribution des Gradients", "Variance"],
+            default="Paramètres"
+        )
+        
+        st.divider()
+
+        # On garde les sliders dans la sidebar pour qu'ils soient accessibles partout dans ce module
+        with st.sidebar:
+            st.subheader("Configuration du Modèle")
+            w0 = st.select_slider("Fréquence (w0)", options=[1, 30], value=30)
+            b_val = st.select_slider("Biais (b)", options=[0, 1000, "uniforme"], value=0)
+            n_layers_sim = st.number_input("Nombre de couches", 1, 6, 3)
+
+        # Logique d'affichage selon le sous-menu
+        if sub_mode == "Paramètres":
+            st.write("### Récapitulatif des paramètres de simulation")
+            st.info(f"Configuration actuelle : $\omega_0 = {w0}$, $bias = {b_val}$, $L = {n_layers_sim}$")
+            # Vous pouvez ajouter ici une explication textuelle des choix d'initialisation
+
+        elif sub_mode == "Distribution des couches":
+            st.subheader("Analyse des Activations (Pre-sin & Post-sin)")
+            # Ici, vous devrez peut-être modifier run_siren_simulation pour ne tracer qu'une partie
+            run_siren_simulation(w0, b_val, n_layers_sim) 
+
+        elif sub_mode == "Spectre":
+            st.subheader("Analyse Fréquentielle (FFT)")
+            # Logique pour afficher uniquement les spectres
+            
+        elif sub_mode == "Distribution des Gradients":
+            st.subheader("Analyse du Gradient")
+            
+        elif sub_mode == "Variance":
+            st.subheader("Évolution de la Variance")
+            # Calcul et affichage de la variance des pré-activations
 
     elif app_mode == "Image Fitting":
         st.title("🖼️ Reconstruction & Analyse Physique")
