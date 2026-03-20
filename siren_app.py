@@ -14,6 +14,15 @@ from siren_image_logic import (
 # Import des fonctions d'affichage
 from siren_visualizer import display_training_step
 
+from siren_init_analysis import (
+    simulate_network, 
+    plot_histograms_Z_X, 
+    plot_fft_comparison, 
+    plot_gradients_dist, 
+    plot_variance_progression, 
+    plot_ks_distance
+)
+
 def main():
     st.set_page_config(page_title="SIREN Diagnostics", layout="wide")
     st.title("Étude des Réseaux SIREN")
@@ -37,40 +46,92 @@ def main():
         """)
 
     elif app_mode == "Initialisation":
-        st.title("🔬 Étude Empirique de l'Initialisation")
-        
+        st.title("Étude Empirique de l'Initialisation")
         
         sub_mode = st.segmented_control(
             "Analyse souhaitée :",
-            ["Paramètres", "Distribution des couches", "Spectre", "Distribution des Gradients", "Variance"],
+            ["Paramètres", "Distribution des couches", "Spectre", "Distribution des Gradients", "Variance", "Distance de Kolmogorov"],
             default="Paramètres"
         )
-        
         st.divider()
 
-        
-
-        
+        # --- 1. CONFIGURATION DES PARAMÈTRES ---
         if sub_mode == "Paramètres":
-            st.write("### Récapitulatif des paramètres de simulation")
-            st.info(f"Configuration actuelle : $\omega_0 = {w0}$, $bias = {b_val}$, $L = {n_layers_sim}$")
-            
+            st.write("### Configuration de la Simulation")
+            c1, c2 = st.columns(2)
+            with c1:
+                L = st.slider("Nombre de couches (L)", 3, 12, 6)
+                n = st.slider("Largeur des couches (n)", 50, 4000, 2048)
+                omega_0 = st.slider("Fréquence ω₀", 1, 100, 30)
+                c_prime = st.slider("Paramètre c' (c = c' * √6)", 1.0, 3.0, 1.0, 0.1)
+            with c2:
+                comp_name = st.selectbox("Activation de comparaison", ["Tanh", "ReLU", "Sigmoid"])
+                x_type = st.radio("Loi de l'entrée X⁽⁰⁾", ["Uniforme U(-1,1)", "Fixe"])
+                
+                # Gestion du nombre d'échantillons p
+                if x_type == "Uniforme U(-1,1)":
+                    p_samples = st.number_input("Nombre d'échantillons (p)", value=2000, step=100)
+                    x_val = 1.0
+                else:
+                    p_samples = 1 # Si X est fixe, p=1 suffit
+                    x_val = st.number_input("Valeur de X fixe", value=1.0)
+                
+                b_type = st.radio("Loi du biais b", ["Constante (0)", "Uniforme U(-b', b')"])
+                b_val = st.number_input("Valeur b'", value=0.1) if b_type == "Uniforme U(-b', b')" else 0.0
 
-        elif sub_mode == "Distribution des couches":
-            st.subheader("Analyse des Activations (Pre-sin & Post-sin)")
-            
+            if st.button("RUN : Calculer la Propagation", use_container_width=True):
+                with st.spinner("Calcul des tenseurs et gradients..."):
+                    act_fn = {"Tanh": torch.tanh, "ReLU": torch.relu, "Sigmoid": torch.sigmoid}[comp_name]
+                    x_dist = 'constant' if x_type == "Fixe" else 'uniform'
+                    b_dist = 'uniform' if b_type == "Uniforme U(-b', b')" else 'constant'
+                    c_val = c_prime * np.sqrt(6)
+                    
+                    # Simulation SIREN vs TÉMOIN
+                    # Note : On passe p_samples à la fonction
+                    Z_s, X_s, G_s = simulate_network(torch.sin, L, n, omega_0, c_val, x_dist, x_val, p=p_samples, b_dist=b_dist, b_val=b_val)
+                    Z_c, X_c, G_c = simulate_network(act_fn, L, n, omega_0, c_val, x_dist, x_val, p=p_samples, b_dist=b_dist, b_val=b_val)
+                    
+                    # Stockage persistant des données ET des paramètres
+                    st.session_state['init_results'] = {
+                        'siren': (Z_s, X_s, G_s), 
+                        'comp': (Z_c, X_c, G_c),
+                        'params': {
+                            'L': L, 'n': n, 'w0': omega_0, 'c': c_val, 
+                            'b': b_val, 'name_c': comp_name, 'p': p_samples
+                        }
+                    }
+                st.success("Calculs terminés avec succès !")
 
+        # --- 2. VÉRIFICATION ET EXTRACTION ---
+        elif 'init_results' not in st.session_state:
+            st.warning("Aucune donnée en mémoire. Allez dans 'Paramètres' et cliquez sur 'RUN'.")
 
-        elif sub_mode == "Spectre":
-            st.subheader("Analyse Fréquentielle (FFT)")
-            
-            
-        elif sub_mode == "Distribution des Gradients":
-            st.subheader("Analyse du Gradient")
-            
-        elif sub_mode == "Variance":
-            st.subheader("Évolution de la Variance")
-            
+        else:
+            # ICI on récupère 'p' depuis le dictionnaire stocké pour éviter l'UnboundLocalError
+            res = st.session_state['init_results']
+            p_dict = res['params'] # On le nomme p_dict pour ne pas confondre avec le nombre p
+            Z_s, X_s, G_s = res['siren']
+            Z_c, X_c, G_c = res['comp']
+
+            if sub_mode == "Distribution des couches":
+                l = st.select_slider("Choisir la couche", options=range(1, p_dict['L'] + 1))
+                st.pyplot(plot_histograms_Z_X(Z_s, X_s, "SIREN", Z_c, X_c, p_dict['name_c'], l-1, b=p_dict['b'], c=p_dict['c']))
+
+            elif sub_mode == "Spectre":
+                l = st.select_slider("Choisir la couche", options=range(1, p_dict['L'] + 1))
+                c_fft1, c_fft2 = st.columns(2)
+                with c_fft1: st.pyplot(plot_fft_comparison(Z_s, Z_c, "SIREN", p_dict['name_c'], l-1, mode="Z"))
+                with c_fft2: st.pyplot(plot_fft_comparison(X_s, X_c, "SIREN", p_dict['name_c'], l-1, mode="X"))
+
+            elif sub_mode == "Distribution des Gradients":
+                l = st.select_slider("Choisir la couche", options=range(1, p_dict['L'] + 1))
+                st.pyplot(plot_gradients_dist(G_s, G_c, "SIREN", p_dict['name_c'], l-1))
+
+            elif sub_mode == "Variance":
+                st.pyplot(plot_variance_progression(Z_s, p_dict['w0'], p_dict['c'], b=p_dict['b']))
+
+            elif sub_mode == "Distance de Kolmogorov":
+                st.pyplot(plot_ks_distance(Z_s, b=p_dict['b'], c=p_dict['c']))   
 
     elif app_mode == "Image Fitting":
         st.title("🖼️ Reconstruction & Analyse Physique")
@@ -108,7 +169,7 @@ def main():
                     
                     model_output = model(model_input)
                     loss = ((model_output - ground_truth)**2).mean()
-                    
+
                     # 4. Visualisation (Visualizer)
                     if is_diag_step:
                         idx = steps_targets.index(step)
