@@ -12,7 +12,7 @@ def simulate_network(activation_fn, L, n, omega_0, c,
     """
     # 1. Génération de l'entrée X^(0)
     if x_dist == 'uniform':
-        X = torch.rand(p, 1) * 2 - 1  # U(-1, 1)
+        X = torch.linspace(-1, 1, p).view(-1, 1)  # U(-1, 1)
     else:
         X = torch.full((p, 1), x_val)
 
@@ -82,8 +82,7 @@ def plot_histograms_Z_X_cascade(Z1, X1, name1, Z2, X2, name2, layers_idx, b=0, c
     Affiche l'entrée X0 puis les couches demandées (Z et X) les unes sous les autres.
     """
     n_layers = len(layers_idx)
-    # 1 ligne pour X0 + n_layers (chaque couche a 2 sous-lignes : Z et X)
-    # Pour correspondre à ton exemple : on fait 1 ligne pour X0, puis 2 lignes par couche
+    #1 ligne pour X0 + n_layers (chaque couche a 2 sous-lignes : Z et X)
     total_rows = 1 + (n_layers * 2)
     fig, axes = plt.subplots(total_rows, 2, figsize=(12, 4 * total_rows))
     plt.subplots_adjust(hspace=0.4)
@@ -114,7 +113,7 @@ def plot_histograms_Z_X_cascade(Z1, X1, name1, Z2, X2, name2, layers_idx, b=0, c
         std_dev = np.sqrt(current_v)
         
         z_axis = np.linspace(min(z1.min(), z2.min()), max(z1.max(), z2.max()), 200)
-        pdf_norm = stats.norm.pdf(z_axis, loc=0, scale=std_dev) # On centre sur 0 pour la comparaison
+        pdf_norm = stats.norm.pdf(z_axis, loc=0, scale=std_dev)
         
         axes[row_z, 0].plot(z_axis, pdf_norm, 'r--', lw=2, label=f'$\mathcal{{N}}(0, {current_v:.1f})$')
         axes[row_z, 0].set_ylabel(f"COUCHE {l_idx+1} (Z)", fontweight='bold')
@@ -193,41 +192,54 @@ def plot_gradients_dist(Grad1, Grad2, name1, name2, layer_idx):
     ax.hist(g1, bins=100, alpha=0.5, density=True, label=name1)
     ax.hist(g2, bins=100, alpha=0.5, density=True, label=name2)
     ax.set_title(f'Distribution des Gradients de Z (Couche {layer_idx+1})')
-    ax.set_yscale('log') # Souvent mieux pour voir les queues des gradients
+    ax.set_yscale('log')
     ax.legend()
     return fig
 
-def plot_fft_comparison(Data1, Data2, name1, name2, layer_idx, mode="X"):
+def plot_fft_comparison(Z_siren, X_siren, Z_comp, X_comp, name1, name2, layers_to_show):
     """
-    Calcule la FFT pour comparer le contenu fréquentiel.
-    mode : "X" pour les activations (avec sinus), "Z" pour les pré-activations.
+    Rendu en cascade : SIREN (colonne gauche) vs Témoin (colonne droite).
+    Affiche l'INPUT (X0) sur la première ligne.
     """
-    fig, ax = plt.subplots(figsize=(10, 5))
+    n_layers = len(layers_to_show)
+    fig, axes = plt.subplots(n_layers + 1, 2, figsize=(12, 3.5 * (n_layers + 1)), squeeze=False)
     
-    # Sélection de la couche (X_list a L+1 éléments, Z_list en a L)
-    offset = 1 if mode == "X" else 0
-    d1 = Data1[layer_idx + offset].flatten()
-    d2 = Data2[layer_idx + offset].flatten()
-    
-    def get_fft_stats(signal):
-        n = len(signal)
-        # On retire la moyenne pour éviter un pic énorme à la fréquence 0
-        fourier = np.fft.fft(signal - np.mean(signal))
-        freq = np.fft.fftfreq(n)
-        pos_mask = freq > 0
-        # Normalisation par n pour que la magnitude soit indépendante du nombre de points p
-        return freq[pos_mask], np.abs(fourier[pos_mask]) / n
+    def get_spectrum(data):
+        if isinstance(data, np.ndarray):
+            data = torch.from_numpy(data)
+        n_samples = data.shape[0]
+        # FFT sur les échantillons (p), moyenne sur les neurones (n)
+        fft_vals = torch.fft.fft(data, dim=0)
+        mag = torch.abs(fft_vals[:n_samples // 2]) 
+        return mag.mean(dim=1).detach().cpu().numpy() if mag.ndim > 1 else mag.detach().cpu().numpy()
 
-    f1, m1 = get_fft_stats(d1)
-    f2, m2 = get_fft_stats(d2)
+    x0_spec = get_spectrum(X_siren[0])
+    
+    for j in range(2):
+        axes[0, j].plot(x0_spec, color='teal', lw=1.5)
+        axes[0, j].set_title(f"Spectrum |F(·)| - INPUT $X^{(0)}$", fontsize=11, fontweight='bold')
+        axes[0, j].set_yscale('log')
+        axes[0, j].grid(True, alpha=0.2)
 
-    ax.semilogy(f1, m1, label=f"{name1} ({mode})", alpha=0.7, color='blue')
-    ax.semilogy(f2, m2, label=f"{name2} ({mode})", alpha=0.7, color='orange')
-    
-    ax.set_title(f"Spectre de puissance de {mode} - Couche {layer_idx+1}")
-    ax.set_xlabel("Fréquence Normalisée")
-    ax.set_ylabel("Magnitude (log)")
-    ax.grid(True, which="both", ls="-", alpha=0.1)
-    ax.legend()
-    
+    # --- LIGNES SUIVANTES : COUCHES EN CASCADE ---
+    for i, l_idx in enumerate(layers_to_show):
+        row = i + 1
+        
+        # Colonne 0 : SIREN
+        spec_s = get_spectrum(X_siren[l_idx + 1])
+        axes[row, 0].plot(spec_s, color='blue', label=name1)
+        axes[row, 0].set_ylabel(f"L{l_idx+1} (act)", fontweight='bold')
+        
+        # Colonne 1 : Témoin
+        spec_c = get_spectrum(X_comp[l_idx + 1])
+        axes[row, 1].plot(spec_c, color='orange', label=name2)
+        
+        for j in range(2):
+            axes[row, j].set_yscale('log')
+            axes[row, j].grid(True, which="both", ls="-", alpha=0.1)
+            axes[row, j].legend(loc='upper right', fontsize=8)
+            if row == n_layers:
+                axes[row, j].set_xlabel("Fréquence (bins)")
+
+    plt.tight_layout()
     return fig

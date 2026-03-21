@@ -127,11 +127,12 @@ def main():
             p_dict = res['params'] 
             Z_s, X_s, G_s = res['siren']
             Z_c, X_c, G_c = res['comp']
+
             # --- BANDEAU DE RÉSUMÉ DES PARAMÈTRES ---
             with st.container(border=True):
                 st.markdown(f"**Configuration Active :** $L={p_dict['L']}$ | $n={p_dict['n']}$ | $\omega_0={p_dict['w0']}$ | $c={p_dict['c']:.2f}$ | Biais $b'={p_dict['b']}$ | Comparaison : **{p_dict['name_c']}**")
 
-# --- ÉNONCÉS THÉORIQUES ET CONJECTURES ---
+            # --- ÉNONCÉS THÉORIQUES ET CONJECTURES ---
             with st.expander("Résultats Théoriques : Comportement Asymptotique"):
                 st.markdown(r"""
                 ### 1. Théorème : Convergence vers une loi normale
@@ -188,10 +189,26 @@ def main():
 
 
             elif sub_mode == "Spectre":
-                l = st.select_slider("Choisir la couche", options=range(1, p_dict['L'] + 1))
-                c_fft1, c_fft2 = st.columns(2)
-                with c_fft1: st.pyplot(plot_fft_comparison(Z_s, Z_c, "SIREN", p_dict['name_c'], l-1, mode="Z"))
-                with c_fft2: st.pyplot(plot_fft_comparison(X_s, X_c, "SIREN", p_dict['name_c'], l-1, mode="X"))
+                st.subheader("Analyse Fréquentielle : Contenu Spectral en Cascade")
+                
+                display_option = st.radio("Affichage :", ["Toutes les couches", "Couche spécifique"], horizontal=True)
+                
+                if display_option == "Couche spécifique":
+                    l_idx = st.select_slider("Choisir la couche", options=range(1, p_dict['L'] + 1))
+                    layers_to_show = [l_idx - 1]
+                else:
+                    layers_to_show = list(range(p_dict['L']))
+
+                with st.spinner("Calcul des transformées de Fourier..."):
+                    # On envoie les 4 listes de tenseurs + les 2 noms + les indices
+                    fig = plot_fft_comparison(
+                        Z_s, X_s,           # SIREN
+                        Z_c, X_c,           # TEMOIN
+                        "SIREN", 
+                        p_dict['name_c'], 
+                        layers_to_show
+                    )
+                    st.pyplot(fig)
 
             elif sub_mode == "Distribution des Gradients":
                 l = st.select_slider("Choisir la couche", options=range(1, p_dict['L'] + 1))
