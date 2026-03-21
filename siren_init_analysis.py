@@ -77,40 +77,67 @@ def theoretical_arcsine(x):
     x = np.clip(x, -0.999, 0.999)
     return 1 / (np.pi * np.sqrt(1 - x**2))
 
-def plot_histograms_Z_X(Z1, X1, name1, Z2, X2, name2, layer_idx, b=0, c=np.sqrt(6)):
-    """Affiche les histogrammes 1 vs 2 avec les courbes théoriques pour une couche donnée."""
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-    
-    # Données de la couche
-    z1, x1 = Z1[layer_idx].flatten(), X1[layer_idx+1].flatten()
-    z2, x2 = Z2[layer_idx].flatten(), X2[layer_idx+1].flatten()
-    
-    # Plot Z
-    axes[0,0].hist(z1, bins=100, density=True, alpha=0.6, color='blue', label=name1)
-    axes[0,1].hist(z2, bins=100, density=True, alpha=0.6, color='orange', label=name2)
-    
-    # Courbe théorique N(b, c^2/6) pour Z (Seulement pertinent si c'est le SIREN/Arcsin regime)
-    z_axis = np.linspace(-5, 5, 200)
-    std_dev = np.sqrt((c**2) / 6)
-    pdf_norm = stats.norm.pdf(z_axis, loc=b, scale=std_dev)
-    axes[0,0].plot(z_axis, pdf_norm, 'r--', lw=2, label='Théorie $\mathcal{N}$')
-    
-    axes[0,0].set_title(f'Pré-activations Z (Couche {layer_idx+1})')
-    axes[0,1].set_title(f'Pré-activations Z (Couche {layer_idx+1})')
-    
-    # Plot X
-    axes[1,0].hist(x1, bins=100, density=True, alpha=0.6, color='blue', label=name1)
-    axes[1,1].hist(x2, bins=100, density=True, alpha=0.6, color='orange', label=name2)
-    
-    # Courbe théorique Arcsinus
-    x_axis = np.linspace(-0.99, 0.99, 200)
-    if 'sin' in name1.lower():
-        axes[1,0].plot(x_axis, theoretical_arcsine(x_axis), 'r--', lw=2, label='Théorie Arcsin')
-    if 'sin' in name2.lower():
-        axes[1,1].plot(x_axis, theoretical_arcsine(x_axis), 'r--', lw=2, label='Théorie Arcsin')
+def plot_histograms_Z_X_cascade(Z1, X1, name1, Z2, X2, name2, layers_idx, b=0, c=np.sqrt(6), omega_0=30):
+    """
+    Affiche l'entrée X0 puis les couches demandées (Z et X) les unes sous les autres.
+    """
+    n_layers = len(layers_idx)
+    # 1 ligne pour X0 + n_layers (chaque couche a 2 sous-lignes : Z et X)
+    # Pour correspondre à ton exemple : on fait 1 ligne pour X0, puis 2 lignes par couche
+    total_rows = 1 + (n_layers * 2)
+    fig, axes = plt.subplots(total_rows, 2, figsize=(12, 4 * total_rows))
+    plt.subplots_adjust(hspace=0.4)
 
-    axes[1,0].set_title(f'Activations X (Couche {layer_idx+1})')
-    for ax in axes.flatten(): ax.legend()
+    # --- LIGNE 0 : ENTRÉE X(0) ---
+    x0_1 = X1[0].flatten()
+    x0_2 = X2[0].flatten()
+    axes[0, 0].hist(x0_1, bins=100, density=True, alpha=0.6, color='teal', label=f"{name1} $X^{(0)}$")
+    axes[0, 1].hist(x0_2, bins=100, density=True, alpha=0.6, color='teal', label=f"{name2} $X^{(0)}$")
+    axes[0, 0].set_title("Entrée $X^{(0)}$ (Initial)")
+    
+    # --- BOUCLE SUR LES COUCHES ---
+    for idx, l_idx in enumerate(layers_idx):
+        row_z = 1 + idx * 2
+        row_x = 2 + idx * 2
+        
+        z1, x1 = Z1[l_idx].flatten(), X1[l_idx+1].flatten()
+        z2, x2 = Z2[l_idx].flatten(), X2[l_idx+1].flatten()
+
+        # --- PRE-ACTIVATION Z ---
+        axes[row_z, 0].hist(z1, bins=100, density=True, alpha=0.6, color='blue', label=name1)
+        axes[row_z, 1].hist(z2, bins=100, density=True, alpha=0.6, color='orange', label=name2)
+        
+        # Loi Normale Théorique N(b, std)
+        theory_b = 0.0 if isinstance(b, float) and b != 0 else b 
+        # Variance : omega_0^2/9 pour L1, sinon c^2/6
+        current_v = (omega_0**2 / 9) if l_idx == 0 else (c**2 / 6)
+        std_dev = np.sqrt(current_v)
+        
+        z_axis = np.linspace(min(z1.min(), z2.min()), max(z1.max(), z2.max()), 200)
+        pdf_norm = stats.norm.pdf(z_axis, loc=0, scale=std_dev) # On centre sur 0 pour la comparaison
+        
+        axes[row_z, 0].plot(z_axis, pdf_norm, 'r--', lw=2, label=f'$\mathcal{{N}}(0, {current_v:.1f})$')
+        axes[row_z, 0].set_ylabel(f"COUCHE {l_idx+1} (Z)", fontweight='bold')
+        axes[row_z, 0].set_title(f"Distribution de Z (Pre-activation)")
+
+        # --- ACTIVATION X ---
+        axes[row_x, 0].hist(x1, bins=100, density=True, alpha=0.6, color='blue')
+        axes[row_x, 1].hist(x2, bins=100, density=True, alpha=0.6, color='orange')
+        
+        # Loi Arcsinus Théorique
+        x_axis = np.linspace(-0.99, 0.99, 200)
+        pdf_arc = 1 / (np.pi * np.sqrt(1 - x_axis**2))
+        
+        if 'sin' in str(name1).lower() or 'siren' in str(name1).lower():
+            axes[row_x, 0].plot(x_axis, pdf_arc, 'r--', lw=2, label='Arcsin Theory')
+        
+        axes[row_x, 0].set_ylabel(f"COUCHE {l_idx+1} (X)", fontweight='bold')
+        axes[row_x, 0].set_title(f"Distribution de X (Post-activation)")
+
+        for col in range(2):
+            axes[row_z, col].legend(fontsize=8)
+            axes[row_x, col].legend(fontsize=8)
+
     plt.tight_layout()
     return fig
 
