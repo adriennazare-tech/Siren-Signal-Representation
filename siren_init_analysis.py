@@ -49,7 +49,7 @@ def simulate_network(activation_fn, L, n, omega_0, c,
         
         # Pré-activation Z^(l)
         Z = X_list[-1] @ W + b
-        Z.retain_grad() # Pour capturer les gradients de Z
+        Z.retain_grad() 
         Z_list.append(Z)
         
         # Activation X^(l)
@@ -61,15 +61,15 @@ def simulate_network(activation_fn, L, n, omega_0, c,
     Loss = X_list[-1].sum()
     Loss.backward()
     
-    # Récupération des gradients de Z
-    Grad_list = [Z.grad.detach() for Z in Z_list]
+    # Récupération des gradients
+    GradZ_list_np = [Z.grad.detach().numpy() for Z in Z_list]
+    GradX_list_np = [X_tens.grad.detach().numpy() for X_tens in X_list]
     
-    # On détache tout pour l'analyse numpy
+    # On détache le reste pour l'analyse
     Z_list_np = [Z.detach().numpy() for Z in Z_list]
-    X_list_np = [X.detach().numpy() for X in X_list]
-    Grad_list_np = [G.numpy() for G in Grad_list]
+    X_list_np = [X_tens.detach().numpy() for X_tens in X_list]
     
-    return Z_list_np, X_list_np, Grad_list_np
+    return Z_list_np, X_list_np, GradZ_list_np, GradX_list_np
 
 def theoretical_arcsine(x):
     """Densité de probabilité de la loi Arcsinus sur (-1, 1)."""
@@ -82,7 +82,7 @@ def plot_histograms_Z_X_cascade(Z1, X1, name1, Z2, X2, name2, layers_idx, b=0, c
     Affiche l'entrée X0 puis les couches demandées (Z et X) les unes sous les autres.
     """
     n_layers = len(layers_idx)
-    #1 ligne pour X0 + n_layers (chaque couche a 2 sous-lignes : Z et X)
+
     total_rows = 1 + (n_layers * 2)
     fig, axes = plt.subplots(total_rows, 2, figsize=(12, 4 * total_rows))
     plt.subplots_adjust(hspace=0.4)
@@ -183,31 +183,53 @@ def plot_ks_distance(Z_list, b=0, c=np.sqrt(6)):
     ax.set_title('Distance KS : Z vs Normale Théorique')
     return fig
 
-def plot_gradients_comparison(Grad_siren, Grad_comp, name1, name2, layers_to_show):
+def plot_gradients_comparison(GZ_siren, GX_siren, GZ_comp, GX_comp, name1, name2, layers_to_show):
     """
-    Rendu en cascade des gradients : SIREN à gauche, Témoin à droite.
-    Utilise une échelle log pour mieux voir la structure des queues de distribution.
+    Affiche la distribution des gradients
     """
-    n_show = len(layers_to_show)
-    fig, axes = plt.subplots(n_show, 2, figsize=(12, 4 * n_show), squeeze=False)
+    n_layers = len(layers_to_show)
+    fig, axes = plt.subplots(n_layers * 2, 2, figsize=(12, 3.5 * n_layers * 2), squeeze=False)
     
     for i, l_idx in enumerate(layers_to_show):
-        # Données SIREN (Colonne 0)
-        g_s = Grad_siren[l_idx].flatten()
-        axes[i, 0].hist(g_s, bins=100, density=True, color='purple', alpha=0.7)
-        axes[i, 0].set_ylabel(f"Couche {l_idx+1}\nGrad(Z)", fontweight='bold')
-        if i == 0: axes[i, 0].set_title(f"Gradients - {name1}", fontsize=12)
+        row_z = i * 2
+        row_x = i * 2 + 1
+        
+        # --- RÉCUPÉRATION ET FLATTEN ---
+        gz_s, gz_c = GZ_siren[l_idx].flatten(), GZ_comp[l_idx].flatten()
+        gx_s, gx_c = GX_siren[l_idx+1].flatten(), GX_comp[l_idx+1].flatten()
 
-        # Données Témoin (Colonne 1)
-        g_c = Grad_comp[l_idx].flatten()
-        axes[i, 1].hist(g_c, bins=100, density=True, color='darkred', alpha=0.7)
-        if i == 0: axes[i, 1].set_title(f"Gradients - {name2}", fontsize=12)
+        # --- SYNCHRONISATION DES ÉCHELLES X ---
+        z_min, z_max = min(gz_s.min(), gz_c.min()), max(gz_s.max(), gz_c.max())
+        x_min, x_max = min(gx_s.min(), gx_c.min()), max(gx_s.max(), gx_c.max())
 
-        # Paramètres communs
-        for j in range(2):
-            axes[i, j].grid(True, which="both", ls="-", alpha=0.1)
-            if i == n_show - 1:
-                axes[i, j].set_xlabel("Valeur du gradient")
+        # --- TRACÉ LIGNE Z (Pre-activation) ---
+        axes[row_z, 0].hist(gz_s, bins=100, density=True, color='purple', alpha=0.7)
+        axes[row_z, 1].hist(gz_c, bins=100, density=True, color='darkred', alpha=0.7)
+        
+        # --- TRACÉ LIGNE X (Activation) ---
+        axes[row_x, 0].hist(gx_s, bins=100, density=True, color='cyan', alpha=0.7)
+        axes[row_x, 1].hist(gx_c, bins=100, density=True, color='orange', alpha=0.7)
+
+        # --- SYNCHRONISATION ET STYLISATION (Z puis X) ---
+        for r, (v_min, v_max) in zip([row_z, row_x], [(z_min, z_max), (x_min, x_max)]):
+            # 1. Calcul du Y max commun pour la ligne
+            y_max = max(axes[r, 0].get_ylim()[1], axes[r, 1].get_ylim()[1])
+            
+            for col in [0, 1]:
+                axes[r, col].set_xlim(v_min, v_max)
+                axes[r, col].set_yscale('log') # PASSAGE EN LOG
+                
+                # On fixe un y_min très petit pour éviter les problèmes d'affichage du log
+                axes[r, col].set_ylim(bottom=1e-3, top=y_max * 2) 
+                
+                axes[r, col].grid(True, which="both", ls="-", alpha=0.1)
+                
+                # Titres et Labels
+                if i == 0: 
+                    axes[r, col].set_title(f"{name1 if col==0 else name2}", fontsize=14, pad=10)
+        
+        axes[row_z, 0].set_ylabel(f"L{l_idx+1} Grad(Z)", fontweight='bold')
+        axes[row_x, 0].set_ylabel(f"L{l_idx+1} Grad(X)", fontweight='bold')
 
     plt.tight_layout()
     return fig
@@ -237,7 +259,7 @@ def plot_fft_comparison(Z_siren, X_siren, Z_comp, X_comp, name1, name2, layers_t
         axes[0, j].set_yscale('log')
         axes[0, j].grid(True, alpha=0.2)
 
-    # --- LIGNES SUIVANTES : COUCHES EN CASCADE ---
+
     for i, l_idx in enumerate(layers_to_show):
         row = i + 1
         

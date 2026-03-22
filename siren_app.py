@@ -94,12 +94,12 @@ def main():
                     c_val = c_prime * np.sqrt(6)
                     
                     # Simulation SIREN vs TÉMOIN
-                    Z_s, X_s, G_s = simulate_network(
+                    Z_s, X_s, GZ_s, GX_s = simulate_network(
                         torch.sin, L, n, omega_0, c_val, 
                         x_dist=x_dist_str, x_val=x_val, p=p_samples, 
                         b_dist=b_dist_str, b_val=b_val
                     )
-                    Z_c, X_c, G_c = simulate_network(
+                    Z_c, X_c, GZ_c, GX_c = simulate_network(
                         act_fn, L, n, omega_0, c_val, 
                         x_dist=x_dist_str, x_val=x_val, p=p_samples, 
                         b_dist=b_dist_str, b_val=b_val
@@ -108,8 +108,8 @@ def main():
 
                     # Stockage persistant des données ET des paramètres
                     st.session_state['init_results'] = {
-                        'siren': (Z_s, X_s, G_s), 
-                        'comp': (Z_c, X_c, G_c),
+                        'siren': (Z_s, X_s, GZ_s, GX_s), 
+                        'comp': (Z_c, X_c, GZ_c, GX_c),
                         'params': {
                             'L': L, 'n': n, 'w0': omega_0, 'c': c_val, 
                             'b': b_val, 'name_c': comp_name, 'p': p_samples
@@ -125,8 +125,8 @@ def main():
             
             res = st.session_state['init_results']
             p_dict = res['params'] 
-            Z_s, X_s, G_s = res['siren']
-            Z_c, X_c, G_c = res['comp']
+            Z_s, X_s, GZ_s, GX_s = res['siren']
+            Z_c, X_c, GZ_c, GX_c = res['comp']
 
             # --- BANDEAU DE RÉSUMÉ DES PARAMÈTRES ---
             with st.container(border=True):
@@ -223,7 +223,8 @@ def main():
 
                 with st.spinner("Calcul des distributions de gradients..."):
                     fig = plot_gradients_comparison(
-                        G_s, G_c, 
+                        GZ_s, GX_s, 
+                        GZ_c, GX_c,
                         "SIREN", p_dict['name_c'], 
                         layers_to_show
                     )
