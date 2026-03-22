@@ -16,9 +16,9 @@ from siren_visualizer import display_training_step
 
 from siren_init_analysis import (
     simulate_network, 
-    plot_histograms_Z_X_cascade, 
-    plot_fft_comparison, 
-    plot_gradients_comparison, 
+    plot_gradients_cascade, 
+    plot_fft_cascade, 
+    plot_distributions_cascade, 
     plot_variance_progression, 
     plot_ks_distance
 )
@@ -175,9 +175,10 @@ def main():
 
                 with st.spinner("Génération des graphiques en cours..."):
                     # Création de la figure
-                    fig = plot_histograms_Z_X_cascade(
-                        Z_s, X_s, "SIREN", 
-                        Z_c, X_c, p_dict['name_c'], 
+                    fig = plot_distributions_cascade(
+                        Z_s, X_s, 
+                        Z_c, X_c,
+                        "SIREN", p_dict['name_c'], 
                         layers_to_show, 
                         b=p_dict['b'], 
                         c=p_dict['c'], 
@@ -189,7 +190,7 @@ def main():
 
 
             elif sub_mode == "Spectre":
-                st.subheader("Analyse Fréquentielle : Contenu Spectral en Cascade")
+                st.subheader("Analyse Fréquentielle des couches")
                 
                 display_option = st.radio("Affichage :", ["Toutes les couches", "Couche spécifique"], horizontal=True)
                 
@@ -199,11 +200,11 @@ def main():
                 else:
                     layers_to_show = list(range(p_dict['L']))
 
-                with st.spinner("Calcul des transformées de Fourier..."):
-                    # On envoie les 4 listes de tenseurs + les 2 noms + les indices
-                    fig = plot_fft_comparison(
-                        Z_s, X_s,           # SIREN
-                        Z_c, X_c,           # TEMOIN
+                with st.spinner("Affichage des transformées de Fourier..."):
+     
+                    fig = plot_fft_cascade(
+                        Z_s, X_s,           
+                        Z_c, X_c,           
                         "SIREN", 
                         p_dict['name_c'], 
                         layers_to_show
@@ -211,7 +212,7 @@ def main():
                     st.pyplot(fig)
 
             elif sub_mode == "Distribution des Gradients":
-                st.subheader("Analyse des Gradients : Stabilité de la Rétropropagation")
+                st.subheader("Analyse des Gradients ")
                 
                 display_option = st.radio("Affichage Gradients :", ["Toutes les couches (Cascade)", "Couche spécifique"], horizontal=True, key="grad_radio")
                 
@@ -222,7 +223,7 @@ def main():
                     layers_to_show = list(range(p_dict['L']))
 
                 with st.spinner("Calcul des distributions de gradients..."):
-                    fig = plot_gradients_comparison(
+                    fig = plot_gradients_cascade(
                         GZ_s, GX_s, 
                         GZ_c, GX_c,
                         "SIREN", p_dict['name_c'], 

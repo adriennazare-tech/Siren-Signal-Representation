@@ -77,69 +77,6 @@ def theoretical_arcsine(x):
     x = np.clip(x, -0.999, 0.999)
     return 1 / (np.pi * np.sqrt(1 - x**2))
 
-def plot_histograms_Z_X_cascade(Z1, X1, name1, Z2, X2, name2, layers_idx, b=0, c=np.sqrt(6), omega_0=30):
-    """
-    Affiche l'entrée X0 puis les couches demandées (Z et X) les unes sous les autres.
-    """
-    n_layers = len(layers_idx)
-
-    total_rows = 1 + (n_layers * 2)
-    fig, axes = plt.subplots(total_rows, 2, figsize=(12, 4 * total_rows))
-    plt.subplots_adjust(hspace=0.4)
-
-    # --- LIGNE 0 : ENTRÉE X(0) ---
-    x0_1 = X1[0].flatten()
-    x0_2 = X2[0].flatten()
-    axes[0, 0].hist(x0_1, bins=100, density=True, alpha=0.6, color='teal', label=f"{name1} $X^{(0)}$")
-    axes[0, 1].hist(x0_2, bins=100, density=True, alpha=0.6, color='teal', label=f"{name2} $X^{(0)}$")
-    axes[0, 0].set_title("Entrée $X^{(0)}$ (Initial)")
-    
-    # --- BOUCLE SUR LES COUCHES ---
-    for idx, l_idx in enumerate(layers_idx):
-        row_z = 1 + idx * 2
-        row_x = 2 + idx * 2
-        
-        z1, x1 = Z1[l_idx].flatten(), X1[l_idx+1].flatten()
-        z2, x2 = Z2[l_idx].flatten(), X2[l_idx+1].flatten()
-
-        # --- PRE-ACTIVATION Z ---
-        axes[row_z, 0].hist(z1, bins=100, density=True, alpha=0.6, color='blue', label=name1)
-        axes[row_z, 1].hist(z2, bins=100, density=True, alpha=0.6, color='orange', label=name2)
-        
-        # Loi Normale Théorique N(b, std)
-        theory_b = 0.0 if isinstance(b, float) and b != 0 else b 
-        # Variance : omega_0^2/9 pour L1, sinon c^2/6
-        current_v = (omega_0**2 / 9) if l_idx == 0 else (c**2 / 6)
-        std_dev = np.sqrt(current_v)
-        
-        z_axis = np.linspace(min(z1.min(), z2.min()), max(z1.max(), z2.max()), 200)
-        pdf_norm = stats.norm.pdf(z_axis, loc=0, scale=std_dev)
-        
-        axes[row_z, 0].plot(z_axis, pdf_norm, 'r--', lw=2, label=f'$\mathcal{{N}}(0, {current_v:.1f})$')
-        axes[row_z, 0].set_ylabel(f"COUCHE {l_idx+1} (Z)", fontweight='bold')
-        axes[row_z, 0].set_title(f"Distribution de Z (Pre-activation)")
-
-        # --- ACTIVATION X ---
-        axes[row_x, 0].hist(x1, bins=100, density=True, alpha=0.6, color='blue')
-        axes[row_x, 1].hist(x2, bins=100, density=True, alpha=0.6, color='orange')
-        
-        # Loi Arcsinus Théorique
-        x_axis = np.linspace(-0.99, 0.99, 200)
-        pdf_arc = 1 / (np.pi * np.sqrt(1 - x_axis**2))
-        
-        if 'sin' in str(name1).lower() or 'siren' in str(name1).lower():
-            axes[row_x, 0].plot(x_axis, pdf_arc, 'r--', lw=2, label='Arcsin Theory')
-        
-        axes[row_x, 0].set_ylabel(f"COUCHE {l_idx+1} (X)", fontweight='bold')
-        axes[row_x, 0].set_title(f"Distribution de X (Post-activation)")
-
-        for col in range(2):
-            axes[row_z, col].legend(fontsize=8)
-            axes[row_x, col].legend(fontsize=8)
-
-    plt.tight_layout()
-    return fig
-
 def plot_variance_progression(Z_list, omega_0, c, b=0):
     """Trace la variance empirique vs théorique au fil des couches."""
     L = len(Z_list)
@@ -183,101 +120,143 @@ def plot_ks_distance(Z_list, b=0, c=np.sqrt(6)):
     ax.set_title('Distance KS : Z vs Normale Théorique')
     return fig
 
-def plot_gradients_comparison(GZ_siren, GX_siren, GZ_comp, GX_comp, name1, name2, layers_to_show):
+
+def _render_synced_cascade(rows_config, name1, name2):
     """
-    Affiche la distribution des gradients
+    Moteur générique pour afficher des graphiques en cascades gauche/droite synchronisée.
     """
-    n_layers = len(layers_to_show)
-    fig, axes = plt.subplots(n_layers * 2, 2, figsize=(12, 3.5 * n_layers * 2), squeeze=False)
-    
-    for i, l_idx in enumerate(layers_to_show):
-        row_z = i * 2
-        row_x = i * 2 + 1
-        
-        # --- RÉCUPÉRATION ET FLATTEN ---
-        gz_s, gz_c = GZ_siren[l_idx].flatten(), GZ_comp[l_idx].flatten()
-        gx_s, gx_c = GX_siren[l_idx+1].flatten(), GX_comp[l_idx+1].flatten()
+    n_rows = len(rows_config)
+    fig, axes = plt.subplots(n_rows, 2, figsize=(12, 3.5 * n_rows), squeeze=False)
 
-        # --- SYNCHRONISATION DES ÉCHELLES X ---
-        z_min, z_max = min(gz_s.min(), gz_c.min()), max(gz_s.max(), gz_c.max())
-        x_min, x_max = min(gx_s.min(), gx_c.min()), max(gx_s.max(), gx_c.max())
+    for i, cfg in enumerate(rows_config):
+        ax_s, ax_c = axes[i, 0], axes[i, 1]
+        ds, dc = cfg['data_s'], cfg['data_c']
+        ptype = cfg.get('type', 'hist')
 
-        # --- TRACÉ LIGNE Z (Pre-activation) ---
-        axes[row_z, 0].hist(gz_s, bins=100, density=True, color='purple', alpha=0.7)
-        axes[row_z, 1].hist(gz_c, bins=100, density=True, color='darkred', alpha=0.7)
-        
-        # --- TRACÉ LIGNE X (Activation) ---
-        axes[row_x, 0].hist(gx_s, bins=100, density=True, color='cyan', alpha=0.7)
-        axes[row_x, 1].hist(gx_c, bins=100, density=True, color='orange', alpha=0.7)
+        # --- TRACÉ DES DONNÉES ---
+        if ptype == 'hist':
+            ax_s.hist(ds, bins=100, density=True, color=cfg.get('color_s', 'purple'), alpha=0.7)
+            ax_c.hist(dc, bins=100, density=True, color=cfg.get('color_c', 'darkred'), alpha=0.7)
+            x_min, x_max = min(ds.min(), dc.min()), max(ds.max(), dc.max())
+        else: # 'plot' pour FFT
+            ax_s.plot(ds, color=cfg.get('color_s', 'blue'), lw=1.5)
+            ax_c.plot(dc, color=cfg.get('color_c', 'orange'), lw=1.5)
+            x_min, x_max = 0, max(len(ds), len(dc))
 
-        # --- SYNCHRONISATION ET STYLISATION (Z puis X) ---
-        for r, (v_min, v_max) in zip([row_z, row_x], [(z_min, z_max), (x_min, x_max)]):
-            # 1. Calcul du Y max commun pour la ligne
-            y_max = max(axes[r, 0].get_ylim()[1], axes[r, 1].get_ylim()[1])
+        # --- AJOUT DES LOIS THÉORIQUES (SIREN UNIQUEMENT) ---
+        if 'theory' in cfg and cfg['theory'] is not None:
+            x_th, y_th, th_label = cfg['theory']
+            ax_s.plot(x_th, y_th, 'r--', lw=2, label=th_label)
+            ax_s.legend(fontsize=9, loc='upper right')
+
+        # --- SYNCHRONISATION DES ÉCHELLES & LOG ---
+        for col, ax in enumerate([ax_s, ax_c]):
+            ax.set_xlim(x_min, x_max)
+            ax.set_yscale('log')
             
-            for col in [0, 1]:
-                axes[r, col].set_xlim(v_min, v_max)
-                axes[r, col].set_yscale('log') # PASSAGE EN LOG
-                
-                # On fixe un y_min très petit pour éviter les problèmes d'affichage du log
-                axes[r, col].set_ylim(bottom=1e-3, top=y_max * 2) 
-                
-                axes[r, col].grid(True, which="both", ls="-", alpha=0.1)
-                
-                # Titres et Labels
-                if i == 0: 
-                    axes[r, col].set_title(f"{name1 if col==0 else name2}", fontsize=14, pad=10)
+            if i == 0: 
+                ax.set_title(f"{name1 if col==0 else name2}", fontsize=14, pad=15)
         
-        axes[row_z, 0].set_ylabel(f"L{l_idx+1} Grad(Z)", fontweight='bold')
-        axes[row_x, 0].set_ylabel(f"L{l_idx+1} Grad(X)", fontweight='bold')
+ 
+        y_max = max(ax_s.get_ylim()[1], ax_c.get_ylim()[1])
+        y_min = 1e-4 if ptype == 'hist' else 1e-8
+        
+        for ax in [ax_s, ax_c]:
+            ax.set_ylim(bottom=y_min, top=y_max * 2)
+            ax.grid(True, which="both", ls="-", alpha=0.1)
+
+        ax_s.set_ylabel(cfg['ylabel'], fontweight='bold')
 
     plt.tight_layout()
     return fig
 
-def plot_fft_comparison(Z_siren, X_siren, Z_comp, X_comp, name1, name2, layers_to_show):
-    """
-    Rendu en cascade : SIREN (colonne gauche) vs Témoin (colonne droite).
-    Affiche l'INPUT (X0) sur la première ligne.
-    """
-    n_layers = len(layers_to_show)
-    fig, axes = plt.subplots(n_layers + 1, 2, figsize=(12, 3.5 * (n_layers + 1)), squeeze=False)
+def plot_distributions_cascade(Z_s, X_s, Z_c, X_c, name1, name2, layers_idx, b=0, c=np.sqrt(6), omega_0=30):
+    rows_config = []
     
+    # Ligne 0 : Input X0
+    rows_config.append({
+        'data_s': X_s[0].flatten(), 'data_c': X_c[0].flatten(), 'type': 'hist',
+        'color_s': 'teal', 'color_c': 'teal', 'ylabel': "Entrée $X^{(0)}$"
+    })
+    
+    # Lignes des couches
+    for l_idx in layers_idx:
+        z_s, z_c = Z_s[l_idx].flatten(), Z_c[l_idx].flatten()
+        x_s, x_c = X_s[l_idx+1].flatten(), X_c[l_idx+1].flatten()
+        
+        # Calcul Loi Normale
+        current_v = (omega_0**2 / 9) if l_idx == 0 else (c**2 / 6)
+        z_axis = np.linspace(min(z_s.min(), z_c.min()), max(z_s.max(), z_c.max()), 200)
+        pdf_norm = stats.norm.pdf(z_axis, loc=0, scale=np.sqrt(current_v))
+        
+        rows_config.append({
+            'data_s': z_s, 'data_c': z_c, 'type': 'hist',
+            'color_s': 'blue', 'color_c': 'orange', 'ylabel': f"L{l_idx+1} (Z)",
+            'theory': (z_axis, pdf_norm, f'$\mathcal{{N}}(0, {current_v:.1f})$')
+        })
+        
+        # Calcul Loi Arcsinus
+        x_axis = np.linspace(-0.99, 0.99, 200)
+        pdf_arc = 1 / (np.pi * np.sqrt(1 - x_axis**2))
+        
+        rows_config.append({
+            'data_s': x_s, 'data_c': x_c, 'type': 'hist',
+            'color_s': 'royalblue', 'color_c': 'darkorange', 'ylabel': f"L{l_idx+1} (X)",
+            'theory': (x_axis, pdf_arc, 'Arcsin') if 'siren' in name1.lower() else None
+        })
+
+    return _render_synced_cascade(rows_config, name1, name2)
+
+def plot_gradients_cascade(GZ_s, GX_s, GZ_c, GX_c, name1, name2, layers_idx):
+    rows_config = []
+    
+    for l_idx in layers_idx:
+        rows_config.append({
+            'data_s': GZ_s[l_idx].flatten(), 'data_c': GZ_c[l_idx].flatten(), 
+            'type': 'hist', 'color_s': 'purple', 'color_c': 'darkred', 
+            'ylabel': f"L{l_idx+1} Grad(Z)"
+        })
+        rows_config.append({
+            'data_s': GX_s[l_idx+1].flatten(), 'data_c': GX_c[l_idx+1].flatten(), 
+            'type': 'hist', 'color_s': 'cyan', 'color_c': 'orange', 
+            'ylabel': f"L{l_idx+1} Grad(X)"
+        })
+
+    return _render_synced_cascade(rows_config, name1, name2)
+
+def plot_fft_cascade(Z_s, X_s, Z_c, X_c, name1, name2, layers_idx):
     def get_spectrum(data):
         if isinstance(data, np.ndarray):
             data = torch.from_numpy(data)
-        n_samples = data.shape[0]
-        # FFT sur les échantillons (p), moyenne sur les neurones (n)
-        fft_vals = torch.fft.fft(data, dim=0)
-        mag = torch.abs(fft_vals[:n_samples // 2]) 
-        return mag.mean(dim=1).detach().cpu().numpy() if mag.ndim > 1 else mag.detach().cpu().numpy()
+        if data.ndim == 1: data = data.unsqueeze(1)
+        
+        # On calcule la magnitude moyenne sur les neurones
+        mag = torch.abs(torch.fft.fft(data, dim=0))[:data.shape[0] // 2]
+        return (mag.mean(dim=1) if mag.shape[1] > 1 else mag.flatten()).detach().cpu().numpy()
 
-    x0_spec = get_spectrum(X_siren[0])
+    rows_config = []
     
-    for j in range(2):
-        axes[0, j].plot(x0_spec, color='teal', lw=1.5)
-        axes[0, j].set_title(f"Spectrum |F(·)| - INPUT $X^{(0)}$", fontsize=11, fontweight='bold')
-        axes[0, j].set_yscale('log')
-        axes[0, j].grid(True, alpha=0.2)
+    # Ligne 0 : Input X0
+    rows_config.append({
+        'data_s': get_spectrum(X_s[0]), 'data_c': get_spectrum(X_c[0]), 
+        'type': 'plot', 'color_s': 'teal', 'color_c': 'teal', 'ylabel': "Spectre $X^{(0)}$"
+    })
+    
+    # Lignes des couches (Z puis X)
+    for l_idx in layers_idx:
+        # Pre-activation Z
+        rows_config.append({
+            'data_s': get_spectrum(Z_s[l_idx]), 
+            'data_c': get_spectrum(Z_c[l_idx]), 
+            'type': 'plot', 'color_s': 'purple', 'color_c': 'darkred', 
+            'ylabel': f"L{l_idx+1} |F(Z)|"
+        })
+        # Post-activation X
+        rows_config.append({
+            'data_s': get_spectrum(X_s[l_idx+1]), 
+            'data_c': get_spectrum(X_c[l_idx+1]), 
+            'type': 'plot', 'color_s': 'royalblue', 'color_c': 'darkorange', 
+            'ylabel': f"L{l_idx+1} |F(X)|"
+        })
 
-
-    for i, l_idx in enumerate(layers_to_show):
-        row = i + 1
-        
-        # Colonne 0 : SIREN
-        spec_s = get_spectrum(X_siren[l_idx + 1])
-        axes[row, 0].plot(spec_s, color='blue', label=name1)
-        axes[row, 0].set_ylabel(f"L{l_idx+1} (act)", fontweight='bold')
-        
-        # Colonne 1 : Témoin
-        spec_c = get_spectrum(X_comp[l_idx + 1])
-        axes[row, 1].plot(spec_c, color='orange', label=name2)
-        
-        for j in range(2):
-            axes[row, j].set_yscale('log')
-            axes[row, j].grid(True, which="both", ls="-", alpha=0.1)
-            axes[row, j].legend(loc='upper right', fontsize=8)
-            if row == n_layers:
-                axes[row, j].set_xlabel("Fréquence (bins)")
-
-    plt.tight_layout()
-    return fig
+    return _render_synced_cascade(rows_config, name1, name2)
