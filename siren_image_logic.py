@@ -4,8 +4,9 @@ import numpy as np
 from PIL import Image
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 from torch.utils.data import Dataset
+from scipy import ndimage
 
-# --- NOYAU DE CALCUL (COORDONNÉES & DÉRIVÉES) ---
+
 
 def get_mgrid(sidelen, dim=2):
     """Génère une grille de coordonnées [-1, 1] pour l'image."""
@@ -24,7 +25,7 @@ def get_laplacian(y, x):
     grad_grad = torch.autograd.grad(grad, x, grad_outputs=torch.ones_like(grad), create_graph=True)[0]
     return grad_grad.sum(dim=-1, keepdim=True)
 
-# --- PRÉPARATION DES DONNÉES ---
+
 
 def process_uploaded_image(uploaded_file, sidelength):
     """Convertit l'image uploadée en tenseur normalisé pour SIREN."""
@@ -45,7 +46,7 @@ class ImageFittingDataset(Dataset):
     def __len__(self): return 1
     def __getitem__(self, idx): return self.coords, self.pixels
 
-# --- ARCHITECTURE DU RÉSEAU ---
+
 
 class SineLayer(nn.Module):
     """Brique de base SIREN avec activation sinus et initialisation spécifique."""
@@ -100,3 +101,18 @@ def build_siren_model(hidden_features=256, hidden_layers=3, first_omega=30, hidd
     
     return nn.Sequential(*layers)
 
+
+
+def get_exact_derivatives(img_tensor, res):
+    """Calcule le gradient et le laplacien discrets sur l'image originale."""
+    img_np = img_tensor.view(res, res).detach().cpu().numpy()
+    
+    # 1. Gradient exact (Norme de Sobel)
+    dx = ndimage.sobel(img_np, axis=1)
+    dy = ndimage.sobel(img_np, axis=0)
+    grad_exact = np.sqrt(dx**2 + dy**2)
+    
+    # 2. Laplacien exact (Filtre de Laplace)
+    lapl_exact = ndimage.laplace(img_np)
+    
+    return img_np, grad_exact, lapl_exact

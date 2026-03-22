@@ -7,13 +7,11 @@ from siren_image_logic import (
     ImageFittingDataset, 
     build_siren_model, 
     get_gradient, 
-    get_laplacian
+    get_laplacian,
+    get_exact_derivatives
 
 )
-
-# Import des fonctions d'affichage
-from siren_visualizer import display_training_step
-
+from siren_visualizer import (display_training_step,tensor_to_numpy_image)
 from siren_init_analysis import (
     simulate_network, 
     plot_gradients_cascade, 
@@ -24,6 +22,25 @@ from siren_init_analysis import (
 )
 
 def main():
+    """
+    
+    Cette fonction genere l'interface utilisateur Streamlit et gère 
+    la navigation entre les trois modules principaux :
+    
+    1. Accueil : Présentation théorique des représentations neuronales implicites 
+       et introduction au projet.
+    2. Initialisation : Étude empirique de la propagation des activations, 
+       de la variance et des gradients dans les réseaux SIREN comparés 
+       aux architectures classiques.
+    3. Image Fitting : Module de démonstration pratique permettant de 
+       reconstruire une image à partir de coordonnées (x, y) et d'extraire 
+       ses dérivées analytiques (Gradient et Laplacien).
+       
+    L'application utilise le 'st.session_state' pour la persistance des 
+    calculs d'initialisation et permet l'import d'images personnalisées 
+    ou l'utilisation d'une image par défaut.
+    """
+
     st.set_page_config(page_title="SIREN Application", layout="wide")
     st.title("Étude des Réseaux SIREN")
     
@@ -245,61 +262,100 @@ def main():
                 st.pyplot(plot_ks_distance(Z_s, b=p_dict['b'], c=p_dict['c']))   
 
     elif app_mode == "Image Fitting":
-        st.title("🖼️ Reconstruction & Analyse Physique")
-        uploaded_file = st.file_uploader("Image", type=["jpg", "png", "jpeg"])
+        st.title("Reconstruction & Analyse Physique")
+        
+        # --- NOUVEAU : CHOIX DE LA SOURCE ---
+        source_radio = st.radio(
+            "Source de l'image :",
+            ["Image par défaut", "Importer une image"],
+            horizontal=True
+        )
+
+        uploaded_file = None
+        default_image_path = "lap.jpg" 
+
+        if source_radio == "Importer une image":
+            uploaded_file = st.file_uploader("Image", type=["jpg", "png", "jpeg"])
+        else:
+            
+            try:
+                uploaded_file = open(default_image_path, "rb")
+            except FileNotFoundError:
+                st.error(f"Fichier '{default_image_path}' non trouvé à la racine.")
         
         if uploaded_file:
-            res = st.select_slider("Résolution", options=[64, 128, 256], value=128)
+            res = 256
             lr = st.number_input("Learning Rate", value=1e-3, format="%.4f")
 
             if st.button("Lancer l'entraînement"):
-                # 1. Préparation des données (Logic)
+                
+                
                 img_tensor = process_uploaded_image(uploaded_file, res)
-                dataset = ImageFittingDataset(img_tensor, res) # Note le nom exact de la classe
+                dataset = ImageFittingDataset(img_tensor, res)
                 model_input, ground_truth = dataset[0]
                 model_input, ground_truth = model_input.unsqueeze(0), ground_truth.unsqueeze(0)
 
-                # 2. Création du modèle (Logic)
+                
+                st.subheader(" Solution Exacte ")
+                
+                img_ex_np, grad_ex_np, lapl_ex_np = get_exact_derivatives(img_tensor, res)
+                
+                
+                col_ex = st.columns(3)
+                with col_ex[0]:
+                    st.image(tensor_to_numpy_image(torch.from_numpy(img_ex_np), res, 'magma'), 
+                             caption="Image Originale", use_container_width=True)
+                with col_ex[1]:
+                    st.image(tensor_to_numpy_image(torch.from_numpy(grad_ex_np), res, 'inferno'), 
+                             caption="Gradient Exact", use_container_width=True)
+                with col_ex[2]:
+                    st.image(tensor_to_numpy_image(torch.from_numpy(lapl_ex_np), res, 'seismic'), 
+                             caption="Laplacien Exact", use_container_width=True)
+                
+                st.divider()
+                
+
+                
                 model = build_siren_model(hidden_features=256, hidden_layers=3)
 
-                # Gestion du Device (Auto-détection)
+                
                 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
                 model, model_input, ground_truth = model.to(device), model_input.to(device), ground_truth.to(device)
 
                 optim = torch.optim.Adam(lr=lr, params=model.parameters())
                 
-                # Interface d'affichage
+                
+                st.subheader("Évolution de l'Apprentissage SIREN")
                 cols = st.columns(5)
                 steps_targets = [40, 80, 120, 160, 200]
                 progress_bar = st.progress(0)
 
-                # 3. Boucle d'entraînement
+                
                 for step in range(1, 201):
                     is_diag_step = step in steps_targets
-                    model_input.requires_grad_(True) # Nécessaire pour les dérivées
+                    model_input.requires_grad_(True) 
                     
                     model_output = model(model_input)
                     loss = ((model_output - ground_truth)**2).mean()
 
-                    # 4. Visualisation (Visualizer)
+                    
                     if is_diag_step:
                         idx = steps_targets.index(step)
                         
-                        # Calcul des dérivées (Logic)
+                        
                         grad = get_gradient(model_output, model_input)
                         lapl = get_laplacian(model_output, model_input)
                         
-                        # Affichage (Visualizer)
+                        
                         display_training_step(cols[idx], step, model_output, grad, lapl, res)
                         
-                        # Nettoyage mémoire
+                        
                         del grad, lapl
                         if torch.cuda.is_available(): torch.cuda.empty_cache()                    
+                    
                     optim.zero_grad()
                     loss.backward()
                     optim.step()
-
-
                     progress_bar.progress(step / 200)
                 
                 st.success("Entraînement terminé !")
