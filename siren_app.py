@@ -62,15 +62,15 @@ def main():
             with c1:
                 L = st.slider("Nombre de couches ($L$)", 3, 12, 6)
                 n = st.slider("Largeur des couches ($n$)", 50, 4000, 2048)
-                omega_0 = st.slider(r"Fréquence $\omega_0$", 1, 100, 30)
-                c_prime = st.slider(r"Paramètre $c'~(c = c'\sqrt{6})$", 1.0, 3.0, 1.0, 0.1)
+                omega_0 = st.slider(r"Fréquence $\omega_0$", 2, 72, 30, 7)
+                c_prime = st.slider(r"Paramètre $c'~(c = c'\sqrt{6})$", 1.0, 5.0, 1.0, 0.5)
             with c2:
                 comp_name = st.selectbox("Activation de comparaison", ["Tanh", "ReLU", "Sigmoid"])
                 x_type = st.radio(r"Loi de l'entrée $X^{(0)}$", [r"Uniforme $\mathcal{U}(-1,1)$", "Fixe"])
                 
                 # Gestion du nombre d'échantillons p
                 if x_type == r"Uniforme $\mathcal{U}(-1,1)$":
-                    p_samples = st.number_input("Nombre d'échantillons ($p$) de $X^{(0)}$", value=2000, step=100)
+                    p_samples = st.number_input("Nombre d'échantillons ($p$) de $X^{(0)}$", value=200, step=100)
                     x_val = 1.0
                 else:
                     p_samples = 1 # Si X est fixe, p=1 suffit
@@ -80,9 +80,9 @@ def main():
                 b_type = st.radio("Loi du biais $b$", ["Constante", r"Uniforme $\mathcal{U}(-b',b')$"])
                 
                 if b_type == "Constante":
-                    b_val = st.number_input("Valeur du biais constant", value=0.0)
+                    b_val = st.number_input("Valeur du biais constant", value=0.0, step=0.79)
                 else:
-                    b_val = st.number_input("Borne $b'$ (Loi uniforme)", value=0.1)
+                    b_val = st.number_input("Borne $b'$ (Loi uniforme)", value=1.0,step=0.5)
 
             if st.button("RUN : Calculer la Propagation", use_container_width=True):
                 with st.spinner("Calcul des tenseurs et gradients..."):
@@ -112,7 +112,7 @@ def main():
                         'comp': (Z_c, X_c, GZ_c, GX_c),
                         'params': {
                             'L': L, 'n': n, 'w0': omega_0, 'c': c_val, 
-                            'b': b_val, 'name_c': comp_name, 'p': p_samples
+                            'b': b_val, 'b_dist': b_dist_str, 'name_c': comp_name, 'p': p_samples
                         }
                     }
                 st.success("Calculs terminés avec succès !")
@@ -129,30 +129,37 @@ def main():
             Z_c, X_c, GZ_c, GX_c = res['comp']
 
             # --- BANDEAU DE RÉSUMÉ DES PARAMÈTRES ---
+
+            if p_dict.get('b_dist', 'constant') == 'uniform':
+                bias_info = rf"$b \sim \mathcal{{U}}(-{p_dict['b']},{p_dict['b']})$, $b'={p_dict['b']}$"
+            else:
+                bias_info = rf"$b={p_dict['b']}$, $b'=0$"
+            
             with st.container(border=True):
-                st.markdown(f"**Configuration Active :** $L={p_dict['L']}$ | $n={p_dict['n']}$ | $\omega_0={p_dict['w0']}$ | $c={p_dict['c']:.2f}$ | Biais $b'={p_dict['b']}$ | Comparaison : **{p_dict['name_c']}**")
+                st.markdown(f"**Configuration Active :** $L={p_dict['L']}$ | $n={p_dict['n']}$ | $\omega_0={p_dict['w0']}$ | $c'={p_dict['c']/ np.sqrt(6):.2f}$ | "
+                            rf" {bias_info} | Comparaison : **{p_dict['name_c']}**")
 
             # --- ÉNONCÉS THÉORIQUES ET CONJECTURES ---
             with st.expander("Résultats Théoriques : Comportement Asymptotique"):
                 st.markdown(r"""
-                ### 1. Théorème : Convergence vers une loi normale
-                *(Neal 1996, Lee 2018, Matthews 2018, Hanin 2023)* Pour un MLP de profondeur $L$ et de largeur $n \to +\infty$, avec une entrée scalaire $X^{(0)} = x$ fixée, les poids $W \sim \mathcal{U}(-\frac{c}{\sqrt{n}}, \frac{c}{\sqrt{n}})$ et les biais $b \sim \mathcal{U}(-b', b')$, la pré-activation de chaque neurone converge en loi vers une distribution gaussienne :
+                # 1. Théorème : Convergence vers un processus gaussien
+                *(Lee 2018 & Hanin 2023)* Pour un MLP de profondeur $L$ et de largeur $n \to +\infty$, avec une entrée scalaire $X^{(0)} = x$ fixée, les poids $W \sim \mathcal{U}(-\frac{c}{\sqrt{n}}, \frac{c}{\sqrt{n}})$ et les biais $b \sim \mathcal{U}(-b', b')$, la pré-activation de chaque neurone converge en loi vers une distribution gaussienne :
                 $$Z_i^{(l)} \xrightarrow{\mathcal{L}} \mathcal{N}(0, V_l)$$
                 Où la variance évolue selon la récurrence :
                 $$V_l = \frac{b'^2}{3} + \frac{c^2}{3} \mathbb{E}_{Z \sim \mathcal{N}(0, V_{l-1})}[\phi(Z)^2]$$
                 
                 
-                ### 2. Conjecture : Extension au cas d'une entrée aléatoire
+                # 2. Conjecture : Extension au cas d'une entrée aléatoire
                 Le résultat précédent reste valable lorsque l'entrée $X^{(0)} \sim \mathcal{U}(-1,1)$ est aléatoire et indépendante. La seule modification réside dans la condition initiale de la variance :
                 $$V_1 = \frac{\omega_0^2}{9} + \frac{b'^2}{3}$$
                 La relation de récurrence pour les couches $l \geq 2$ demeure inchangée.
 
-                ### 3. Proposition : Application à l'activation sinus (SIREN)
+                # 3. Proposition : Application à l'activation sinus (SIREN)
                 Dans le cadre spécifique où $\phi = \sin$, la relation de récurrence prend la forme explicite suivante :
                 $$V_l = \frac{b'^2}{3} + \frac{c^2}{6}(1 - e^{-2V_{l-1}})$$
                 Pour toute condition initiale $V_1 > 0$, la suite $(V_l)$ est monotone à partir du rang 2 et converge vers un point fixe unique $V^* \in \left[\frac{b'^2}{3},\, \frac{b'^2}{3}+\frac{c^2}{6}\right]$.
 
-                ### 4. Proposition : Double limite et convergence Arcsinus
+                # 4. Proposition : Double limite et convergence Arcsinus
                 Dans la limite de grande profondeur ($l \to +\infty$), de grande largeur ($n \to +\infty$) et de forte variance des poids ($c \to +\infty$), avec $b'=0$ :
                 1. **Convergence de la variance** : $V^* \sim \frac{c^2}{6}$.
                 2. **Convergence en loi de l'activation** : L'activation $X_i^{(l)} = \sin(Z_i^{(l)})$ converge en loi vers la **loi Arcsinus** sur $[-1,1]$, de densité :
@@ -222,7 +229,7 @@ def main():
                 else:
                     layers_to_show = list(range(p_dict['L']))
 
-                with st.spinner("Calcul des distributions de gradients..."):
+                with st.spinner("Affichage des distributions des gradients..."):
                     fig = plot_gradients_cascade(
                         GZ_s, GX_s, 
                         GZ_c, GX_c,
