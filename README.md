@@ -1,6 +1,6 @@
 # 🎭 Étude des Réseaux SIREN (Sinusoidal Representation Networks)
 
-Ce projet a été réalisé par **Adrien NAZARE** et **Adam ROZENTALIS** dans le cadre du cours de projet de deep learning dirigé par Guillermo Durand par **Adrien NAZARE** et **Adam ROZENTALIS**. 
+Ce projet a été réalisé par **Adrien NAZARE** et **Adam ROZENTALIS** dans le cadre du cours de projet de deep learning dirigé par Guillermo Durand. 
 
 L'objectif est d'explorer les **Représentations Neuronales Implicites** via l'architecture **SIREN**, introduite par Sitzmann et al. Contrairement aux réseaux classiques (ReLU), les SIREN utilisent des fonctions d'activation périodiques permettant de capturer les détails haute fréquence des signaux.
 
