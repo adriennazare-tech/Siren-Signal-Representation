@@ -18,7 +18,7 @@ from siren_init_analysis import (
     simulate_network, 
     plot_histograms_Z_X_cascade, 
     plot_fft_comparison, 
-    plot_gradients_dist, 
+    plot_gradients_comparison, 
     plot_variance_progression, 
     plot_ks_distance
 )
@@ -211,8 +211,23 @@ def main():
                     st.pyplot(fig)
 
             elif sub_mode == "Distribution des Gradients":
-                l = st.select_slider("Choisir la couche", options=range(1, p_dict['L'] + 1))
-                st.pyplot(plot_gradients_dist(G_s, G_c, "SIREN", p_dict['name_c'], l-1))
+                st.subheader("Analyse des Gradients : Stabilité de la Rétropropagation")
+                
+                display_option = st.radio("Affichage Gradients :", ["Toutes les couches (Cascade)", "Couche spécifique"], horizontal=True, key="grad_radio")
+                
+                if display_option == "Couche spécifique":
+                    l_idx = st.select_slider("Choisir la couche  ", options=range(1, p_dict['L'] + 1), key="grad_slider")
+                    layers_to_show = [l_idx - 1]
+                else:
+                    layers_to_show = list(range(p_dict['L']))
+
+                with st.spinner("Calcul des distributions de gradients..."):
+                    fig = plot_gradients_comparison(
+                        G_s, G_c, 
+                        "SIREN", p_dict['name_c'], 
+                        layers_to_show
+                    )
+                    st.pyplot(fig)
 
             elif sub_mode == "Variance":
                 st.pyplot(plot_variance_progression(Z_s, p_dict['w0'], p_dict['c'], b=p_dict['b']))

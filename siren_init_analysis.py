@@ -183,17 +183,33 @@ def plot_ks_distance(Z_list, b=0, c=np.sqrt(6)):
     ax.set_title('Distance KS : Z vs Normale Théorique')
     return fig
 
-def plot_gradients_dist(Grad1, Grad2, name1, name2, layer_idx):
-    """Histogramme des gradients pour vérifier l'absence de Vanishing/Exploding gradients."""
-    fig, ax = plt.subplots(figsize=(8, 4))
-    g1 = Grad1[layer_idx].flatten()
-    g2 = Grad2[layer_idx].flatten()
+def plot_gradients_comparison(Grad_siren, Grad_comp, name1, name2, layers_to_show):
+    """
+    Rendu en cascade des gradients : SIREN à gauche, Témoin à droite.
+    Utilise une échelle log pour mieux voir la structure des queues de distribution.
+    """
+    n_show = len(layers_to_show)
+    fig, axes = plt.subplots(n_show, 2, figsize=(12, 4 * n_show), squeeze=False)
     
-    ax.hist(g1, bins=100, alpha=0.5, density=True, label=name1)
-    ax.hist(g2, bins=100, alpha=0.5, density=True, label=name2)
-    ax.set_title(f'Distribution des Gradients de Z (Couche {layer_idx+1})')
-    ax.set_yscale('log')
-    ax.legend()
+    for i, l_idx in enumerate(layers_to_show):
+        # Données SIREN (Colonne 0)
+        g_s = Grad_siren[l_idx].flatten()
+        axes[i, 0].hist(g_s, bins=100, density=True, color='purple', alpha=0.7)
+        axes[i, 0].set_ylabel(f"Couche {l_idx+1}\nGrad(Z)", fontweight='bold')
+        if i == 0: axes[i, 0].set_title(f"Gradients - {name1}", fontsize=12)
+
+        # Données Témoin (Colonne 1)
+        g_c = Grad_comp[l_idx].flatten()
+        axes[i, 1].hist(g_c, bins=100, density=True, color='darkred', alpha=0.7)
+        if i == 0: axes[i, 1].set_title(f"Gradients - {name2}", fontsize=12)
+
+        # Paramètres communs
+        for j in range(2):
+            axes[i, j].grid(True, which="both", ls="-", alpha=0.1)
+            if i == n_show - 1:
+                axes[i, j].set_xlabel("Valeur du gradient")
+
+    plt.tight_layout()
     return fig
 
 def plot_fft_comparison(Z_siren, X_siren, Z_comp, X_comp, name1, name2, layers_to_show):
