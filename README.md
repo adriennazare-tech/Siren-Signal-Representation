@@ -1,4 +1,4 @@
-# 🎭 Étude des Réseaux SIREN (Sinusoidal Representation Networks)
+#  Étude des Réseaux SIREN (Sinusoidal Representation Networks)
 
 Ce projet a été réalisé par **Adrien NAZARE** et **Adam ROZENTALIS** dans le cadre du cours de projet de deep learning dirigé par Guillermo Durand. 
 

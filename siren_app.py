@@ -56,10 +56,28 @@ def main():
     if app_mode == "Accueil":
         st.subheader("Représentations Neuronales Implicites")
         st.info("**Adrien NAZARE** & **Adam ROZENTALIS**")
+
         st.markdown("""
-        Cette application permet d'explorer les réseaux SIREN sous deux angles :
-        1. **Initialisation** : Pourquoi le schéma de Xavier/Kaiming échoue avec les sinus.
-        2. **Fitting** : Apprentissage d'une image et extraction de ses dérivées physiques.
+        Ce projet académique propose une étude approfondie des réseaux de neurones à activations sinusoïdales, introduits par *Sitzmann et al. (2020)*. Contrairement aux architectures classiques, les **SIREN** permettent de modéliser des signaux complexes et leurs dérivées avec une précision remarquable.
+
+        L'application se divise en deux modules :
+
+
+
+        ### Étude de la Propagation et de l'Initialisation
+        Ce module permet d'analyser la stabilité numérique du réseau avant tout entraînement. L'objectif est d'observer comment les choix de conception influencent la distribution des signaux :
+        * **Statistiques des couches** : Suivi de l'évolution des pré-activations ($Z$) et des activations ($X$) pour vérifier la conservation de la variance.
+        * **Analyse des Gradients** : Étude de la rétropropagation pour prévenir les phénomènes d'évanouissement du gradient.
+        * **Convergence Théorique** : Confrontation des simulations numériques avec les résultats asymptotiques (Lois Arcsinus et Processus Gaussiens en grande largeur).
+
+        ### Représentation Implicite de Signaux (Fitting)
+        Ce second volet illustre la capacité du réseau à apprendre une fonction continue $f(x, y)$ représentant une image :
+        * **Régression de coordonnées** : Apprentissage des valeurs de pixels en fonction de leur position spatiale.
+        * **Régularité des dérivées** : Extraction des opérateurs différentiels (gradients, Laplacien) directement depuis le réseau entraîné.
+  
+
+
+        **Veuillez sélectionner un mode d'analyse dans la barre latérale pour débuter la simulation.**
         """)
 
     elif app_mode == "Initialisation":
@@ -75,6 +93,30 @@ def main():
         # --- 1. CONFIGURATION DES PARAMÈTRES ---
         if sub_mode == "Paramètres":
             st.write("### Configuration de la Simulation")
+            with st.expander("Détails du Schéma d'Initialisation (SIREN)", expanded=False):
+                st.markdown(r"""
+                **Dimensions et Échantillonnage :** Soit $L$ le nombre de couches cachées et $n$ la largeur de ces couches ($n_l = n$ pour $l \in [\![1, L]\!]$).  
+                L'entrée est scalaire $X^{(0)} \in \mathbb{R}$. Si $X^{(0)}$ est définie comme aléatoire, nous tirons $p$ échantillons indépendants $x^{(0)}_1, \dots, x^{(0)}_p$ pour effectuer la simulation statistique.
+
+                **Espaces des tenseurs :** * $W^{(1)} \in \mathbb{R}^{n \times 1}$ et $b^{(1)} \in \mathbb{R}^n$.  
+                * $W^{(l)} \in \mathbb{R}^{n \times n}$ et $b^{(l)} \in \mathbb{R}^n$ pour $l \in [\![2, L]\!]$.  
+                * $Z^{(l)}, X^{(l)} \in \mathbb{R}^n$ pour $l \in [\![1, L]\!]$.
+
+                **Distributions des poids $W_{ij}^{(l)}$ :** Les poids sont initialisés selon les lois uniformes suivantes :
+                $$
+                \begin{cases} 
+                W_{i,1}^{(1)} \sim \mathcal{U}\left(-\omega_0, \omega_0\right), & \text{pour } l=1, \text{ avec } i \in [\![1, n]\!]. \\
+                W_{ij}^{(l)} \sim \mathcal{U}\left(-\frac{c}{\sqrt{n}}, \frac{c}{\sqrt{n}}\right), & \text{pour } l \in [\![2, L]\!], \text{ avec } i,j \in [\![1, n]\!].
+                \end{cases}
+                $$
+                
+                **Relation de récurrence :** Pour chaque couche $l \in [\![1, L]\!]$, la pré-activation du neurone $i$ est définie par :
+                
+                $$ Z_i^{(l)} = \sum_{j=1}^{n_{l-1}} W_{ij}^{(l)} X_j^{(l-1)} + b_i^{(l)}, $$ où $n_0=1$.
+                
+                L'activation est ensuite obtenue par la fonction sinus : $$ X_i^{(l)} = \sin\left(Z_i^{(l)}\right). $$
+                """)
+
             c1, c2 = st.columns(2)
             with c1:
                 L = st.slider("Nombre de couches ($L$)", 3, 12, 6)
@@ -101,7 +143,7 @@ def main():
                 else:
                     b_val = st.number_input("Borne $b'$ (Loi uniforme)", value=1.0,step=0.5)
 
-            if st.button("RUN : Calculer la Propagation", use_container_width=True):
+            if st.button("Calculer la Propagation", use_container_width=True):
                 with st.spinner("Calcul des tenseurs et gradients..."):
                     act_fn = {"Tanh": torch.tanh, "ReLU": torch.relu, "Sigmoid": torch.sigmoid}[comp_name]
                    
@@ -132,11 +174,11 @@ def main():
                             'b': b_val, 'b_dist': b_dist_str, 'name_c': comp_name, 'p': p_samples
                         }
                     }
-                st.success("Calculs terminés avec succès !")
+                st.success("Calculs terminés avec succès ! Changer d'onglets pour visualiser les résultats.")
 
         # --- 2. VÉRIFICATION ET EXTRACTION ---
         elif 'init_results' not in st.session_state:
-            st.warning("Aucune donnée en mémoire. Allez dans 'Paramètres' et cliquez sur 'RUN'.")
+            st.warning("Aucune donnée en mémoire. Aller dans 'Paramètres' et cliquer sur le bouton 'Calculer la Propagation'.")
 
         else:
             
@@ -153,34 +195,36 @@ def main():
                 bias_info = rf"$b={p_dict['b']}$, $b'=0$"
             
             with st.container(border=True):
-                st.markdown(f"**Configuration Active :** $L={p_dict['L']}$ | $n={p_dict['n']}$ | $\omega_0={p_dict['w0']}$ | $c'={p_dict['c']/ np.sqrt(6):.2f}$ | "
+                st.markdown(rf"**Configuration Active :** $L={p_dict['L']}$ | $n={p_dict['n']}$ | $\omega_0={p_dict['w0']}$ | $c'={p_dict['c']/ np.sqrt(6):.2f}$ | "
                             rf" {bias_info} | Comparaison : **{p_dict['name_c']}**")
 
             # --- ÉNONCÉS THÉORIQUES ET CONJECTURES ---
             with st.expander("Résultats Théoriques : Comportement Asymptotique"):
                 st.markdown(r"""
-                # 1. Théorème : Convergence vers un processus gaussien
-                *(Lee 2018 & Hanin 2023)* Pour un MLP de profondeur $L$ et de largeur $n \to +\infty$, avec une entrée scalaire $X^{(0)} = x$ fixée, les poids $W \sim \mathcal{U}(-\frac{c}{\sqrt{n}}, \frac{c}{\sqrt{n}})$ et les biais $b \sim \mathcal{U}(-b', b')$, la pré-activation de chaque neurone converge en loi vers une distribution gaussienne :
-                $$Z_i^{(l)} \xrightarrow{\mathcal{L}} \mathcal{N}(0, V_l)$$
-                Où la variance évolue selon la récurrence :
-                $$V_l = \frac{b'^2}{3} + \frac{c^2}{3} \mathbb{E}_{Z \sim \mathcal{N}(0, V_{l-1})}[\phi(Z)^2]$$
+                Les MLP de largeur infinie sont étroitement liés aux processus Gaussiens *(Lee 2018 & Hanin 2023)* et nous énoncons ci-dessus une version simplifiée de leur théorème :
+                            
+                **Théorème 1**: Pour un MLP de profondeur $L$ et de largeur $n \to +\infty$, avec une entrée scalaire $X^{(0)} = x$ fixée, les poids $W \sim \mathcal{U}(-\frac{c}{\sqrt{n}}, \frac{c}{\sqrt{n}})$ et les biais $b \sim \mathcal{U}(-b', b')$, la pré-activation de chaque neurone converge en loi vers une distribution gaussienne :
+                $$Z_i^{(l)} \xrightarrow{\mathcal{L}} \mathcal{N}(0, V_l),$$ 
                 
+                où la variance évolue selon la récurrence : $$V_l = \frac{b'^2}{3} + \frac{c^2}{3} \mathbb{E}_{Z \sim \mathcal{N}(0, V_{l-1})}[\phi(Z)^2]$$ et $V_1 = \frac{\omega_0^2 x^2}{3} + \frac{b'^2}{3}$.
                 
-                # 2. Conjecture : Extension au cas d'une entrée aléatoire
-                Le résultat précédent reste valable lorsque l'entrée $X^{(0)} \sim \mathcal{U}(-1,1)$ est aléatoire et indépendante. La seule modification réside dans la condition initiale de la variance :
-                $$V_1 = \frac{\omega_0^2}{9} + \frac{b'^2}{3}$$
-                La relation de récurrence pour les couches $l \geq 2$ demeure inchangée.
+                Au vu des expériences numériques, nous emettons la conjecture suivante : 
+                            
+                **Conjecture** : Le théorème précédent reste valable lorsque l'entrée $X^{(0)} \sim \mathcal{U}(-1,1)$ est aléatoire et indépendante des poids du réseau. La seule modification réside dans la condition initiale de la variance :
+                $$V_1 = \frac{\omega_0^2}{9} + \frac{b'^2}{3}.$$ La relation de récurrence pour les couches $l \geq 2$ demeure inchangée.
 
-                # 3. Proposition : Application à l'activation sinus (SIREN)
-                Dans le cadre spécifique où $\phi = \sin$, la relation de récurrence prend la forme explicite suivante :
-                $$V_l = \frac{b'^2}{3} + \frac{c^2}{6}(1 - e^{-2V_{l-1}})$$
+                Au cours de ce projet, nous avons pu établir la proposition suivante : 
+                            
+                **__Proposition__** : Dans le cadre spécifique où $\phi = \sin$, la relation de récurrence prend la forme explicite suivante :
+                $$V_l = \frac{b'^2}{3} + \frac{c^2}{6}(1 - e^{-2V_{l-1}}).$$
                 Pour toute condition initiale $V_1 > 0$, la suite $(V_l)$ est monotone à partir du rang 2 et converge vers un point fixe unique $V^* \in \left[\frac{b'^2}{3},\, \frac{b'^2}{3}+\frac{c^2}{6}\right]$.
-
-                # 4. Proposition : Double limite et convergence Arcsinus
-                Dans la limite de grande profondeur ($l \to +\infty$), de grande largeur ($n \to +\infty$) et de forte variance des poids ($c \to +\infty$), avec $b'=0$ :
-                1. **Convergence de la variance** : $V^* \sim \frac{c^2}{6}$.
-                2. **Convergence en loi de l'activation** : L'activation $X_i^{(l)} = \sin(Z_i^{(l)})$ converge en loi vers la **loi Arcsinus** sur $[-1,1]$, de densité :
-                $$f(x) = \frac{1}{\pi\sqrt{1-x^2}}$$
+                            
+                Nous avons également établi le théorème suivant pour $X^{(0)}$ fixé (il se généralise à $X^{(0)}\sim \mathcal{U}(-1,1)$ aléatoire si notre conjecture est juste) :
+                            
+                **Théorème 2** : Dans la limite de grande profondeur ($l \to +\infty$), de grande largeur ($n \to +\infty$) et de forte variance des poids ($c \to +\infty$), avec $b'=0$ :
+                1. Le point fixe vérifie assymptotiquement $V^*=\frac{c^2}{6}+o(1)$.
+                2. La distance de Kolomgorov entre $Z_i^{(l)}$ et une $\mathcal{N}(0,\frac{c^2}{6})$ converge vers $0$.
+                3. La distance de Kolmogorov entre $X_i^{(l)}$ et une $\mathcal{A}rcsin(-1,1)$ converge vers $0$.
                 """)
 
             if sub_mode == "Distribution des couches":
