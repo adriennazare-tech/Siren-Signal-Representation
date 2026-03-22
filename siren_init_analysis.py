@@ -77,47 +77,111 @@ def theoretical_arcsine(x):
     x = np.clip(x, -0.999, 0.999)
     return 1 / (np.pi * np.sqrt(1 - x**2))
 
-def plot_variance_progression(Z_list, omega_0, c, b=0):
-    """Trace la variance empirique vs théorique au fil des couches."""
-    L = len(Z_list)
-    emp_vars = [np.var(Z) for Z in Z_list]
+def arcsin_cdf(x):
+    """Fonction de répartition de la loi Arcsinus sur (-1, 1)."""
+    x_clipped = np.clip(x, -1, 1)
+    return (2 / np.pi) * np.arcsin(np.sqrt((x_clipped + 1) / 2))
+
+def plot_variance_progression(Z_s, Z_c, p_dict):
+    """
+    Trace la variance empirique vs théorique.
+    Prend en compte :
+    - X0 fixe (x^2) ou uniforme (1/3)
+    - b constant ou uniforme (b'^2/3)
+    """
+    L = p_dict['L']
+    w0 = p_dict['w0']
+    c = p_dict['c']
+    b_val = p_dict['b']
+    b_dist = p_dict['b_dist']
+    p = p_dict['p']
     
-    # Calcul théorique récursif
+    # --- CALCUL THÉORIQUE ---
     theo_vars = []
-    v_prev = (omega_0**2) / 9
-    theo_vars.append(v_prev)
     
+    # 1. Calcul de Var(b)
+    var_b = (b_val**2)/3 if b_dist == 'uniform' else 0
+    
+    # 2. Condition initiale V1
+    if p > 1: # Cas Entrée Uniforme U(-1,1)
+        v1 = (w0**2)/9 + var_b
+    else: # Cas Entrée Fixe x
+        # x_val est stocké dans p_dict si tu l'as ajouté, sinon on prend 1.0 par défaut
+        x_val = p_dict.get('x_val', 1.0) 
+        v1 = ((w0**2) * (x_val**2)) / 3 + var_b
+    
+    theo_vars.append(v1)
+    
+    # 3. Récurrence pour l >= 2
+    v_prev = v1
     for _ in range(1, L):
-        v_next = ((c**2)/6) * (1 - np.cos(2*b) * np.exp(-2 * v_prev))
+        # Formule : V_l = var_b + (c^2/6) * (1 - exp(-2*V_{l-1}))
+        # Note : On suppose l'espérance de Z nulle (b' symétrique ou b=0)
+        v_next = var_b + ((c**2)/6) * (1 - np.exp(-2 * v_prev))
         theo_vars.append(v_next)
         v_prev = v_next
         
-    fig, ax = plt.subplots(figsize=(8, 4))
-    layers = np.arange(1, L+1)
-    ax.plot(layers, emp_vars, 'o-', label='Empirique')
-    ax.plot(layers, theo_vars, 's--', label='Théorique')
-    ax.set_xlabel('Couches')
-    ax.set_ylabel('Variance de Z')
-    ax.set_title('Évolution de la Variance')
+    # --- DONNÉES EMPIRIQUES ---
+    emp_vars_s = [np.var(Z) for Z in Z_s]
+    emp_vars_c = [np.var(Z) for Z in Z_c]
+    layers = np.arange(1, L + 1)
+    
+    # --- TRACÉ ---
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.plot(layers, emp_vars_s, 'bo-', label='Empirique (SIREN)')
+    ax.plot(layers, theo_vars, 'k--', linewidth=2, label='Théorie (SIREN)')
+    ax.plot(layers, emp_vars_c, 'ro-', alpha=0.6, label=f"Empirique ({p_dict['name_c']})")
+    
+    ax.set_yscale('log')
+    ax.set_xlabel('Couches ($l$)')
+    ax.set_ylabel('Variance $V_l$ (log)')
+    ax.set_title('Évolution de la Variance : Simulation vs Conjecture')
+    ax.grid(True, which="both", ls="-", alpha=0.2)
     ax.legend()
+    
     return fig
 
-def plot_ks_distance(Z_list, b=0, c=np.sqrt(6)):
-    """Trace la distance de Kolmogorov-Smirnov entre Z et N(b, c^2/6)."""
+def plot_combined_ks_distances(Z_list, X_list, b=0, c=np.sqrt(6)):
+    """
+    Trace sur le même graphique :
+    - d_KS(X^(l), Arcsin(-1,1)) pour l >= 1 (toutes les couches)
+    - d_KS(Z^(l), N(b, c^2/6)) pour l >= 2 (à partir de la 2ème couche)
+    """
     L = len(Z_list)
-    ks_dists = []
-    std_dev = np.sqrt((c**2)/6)
+    std_dev_theory = np.sqrt((c**2) / 6)
     
-    for Z in Z_list:
-        # kstest compare la distribution empirique à la CDF théorique
-        stat, _ = stats.kstest(Z.flatten(), 'norm', args=(b, std_dev))
-        ks_dists.append(stat)
+    # 1. Calcul pour X (Loi Arcsinus) : l de 1 à L
+    ks_X = []
+    layers_X = np.arange(1, L + 1)
+    for l in range(L):
+        # Utilisation de ta fonction arcsin_cdf externe
+        stat, _ = stats.kstest(X_list[l].flatten(), arcsin_cdf)
+        ks_X.append(stat)
         
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(np.arange(1, L+1), ks_dists, 'ro-')
-    ax.set_xlabel('Couches')
+    # 2. Calcul pour Z (Loi Normale) : l de 2 à L
+    ks_Z = []
+    layers_Z = np.arange(2, L + 1)
+    for l in range(1, L): # On commence à l'index 1 (couche 2)
+        stat, _ = stats.kstest(Z_list[l].flatten(), 'norm', args=(b, std_dev_theory))
+        ks_Z.append(stat)
+        
+    # --- Tracé ---
+    fig, ax = plt.subplots(figsize=(9, 5))
+    
+    # Courbe pour X (Bleu, continue)
+    ax.plot(layers_X, ks_X, 'bo-', label=r"$d_{KS}(X^{(l)}, \text{Arcsin}(-1,1))$")
+    
+    # Courbe pour Z (Rouge, pointillés, à partir de la couche 2)
+    ax.plot(layers_Z, ks_Z, 'ro--', label=r"$d_{KS}(Z^{(l)}, \mathcal{N}(0, c^2/6))$")
+    
+    # Mise en forme académique
+    ax.set_xlabel('Couche ($l$)')
     ax.set_ylabel('Distance KS')
-    ax.set_title('Distance KS : Z vs Normale Théorique')
+    ax.set_title('Convergence vers les lois limites pour le SIREN')
+    ax.set_xticks(np.arange(1, L + 1))
+    ax.grid(True, which='both', linestyle='--', alpha=0.5)
+    ax.legend()
+    
     return fig
 
 
@@ -229,7 +293,7 @@ def plot_fft_cascade(Z_s, X_s, Z_c, X_c, name1, name2, layers_idx):
         if isinstance(data, np.ndarray):
             data = torch.from_numpy(data)
         if data.ndim == 1: data = data.unsqueeze(1)
-        
+
         # On calcule la magnitude moyenne sur les neurones
         mag = torch.abs(torch.fft.fft(data, dim=0))[:data.shape[0] // 2]
         return (mag.mean(dim=1) if mag.shape[1] > 1 else mag.flatten()).detach().cpu().numpy()

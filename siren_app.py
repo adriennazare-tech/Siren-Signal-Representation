@@ -18,7 +18,7 @@ from siren_init_analysis import (
     plot_fft_cascade, 
     plot_distributions_cascade, 
     plot_variance_progression, 
-    plot_ks_distance
+    plot_combined_ks_distances
 )
 
 def main():
@@ -171,7 +171,7 @@ def main():
                         'comp': (Z_c, X_c, GZ_c, GX_c),
                         'params': {
                             'L': L, 'n': n, 'w0': omega_0, 'c': c_val, 
-                            'b': b_val, 'b_dist': b_dist_str, 'name_c': comp_name, 'p': p_samples
+                            'b': b_val, 'b_dist': b_dist_str,'x_val': x_val, 'name_c': comp_name, 'p': p_samples
                         }
                     }
                 st.success("Calculs terminés avec succès ! Changer d'onglets pour visualiser les résultats.")
@@ -259,25 +259,31 @@ def main():
 
             elif sub_mode == "Spectre":
                 st.subheader("Analyse Fréquentielle des couches")
+                # Vérification de la validité de la FFT (nécessite p > 1)
+                if p_dict.get('p', 0) <= 1:
+                    st.warning("**Analyse spectrale indisponible**")
+                    st.info("La transformée de Fourier (FFT) nécessite un signal échantillonné pour être calculée. "
+                            "Veuillez retourner dans l'onglet **Paramètres**, choisir l'entrée **Uniforme** "
+                            "et relancer la simulation.")
+                else:    
+                    display_option = st.radio("Affichage :", ["Toutes les couches", "Couche spécifique"], horizontal=True)
                 
-                display_option = st.radio("Affichage :", ["Toutes les couches", "Couche spécifique"], horizontal=True)
-                
-                if display_option == "Couche spécifique":
-                    l_idx = st.select_slider("Choisir la couche", options=range(1, p_dict['L'] + 1))
-                    layers_to_show = [l_idx - 1]
-                else:
-                    layers_to_show = list(range(p_dict['L']))
+                    if display_option == "Couche spécifique":
+                        l_idx = st.select_slider("Choisir la couche", options=range(1, p_dict['L'] + 1))
+                        layers_to_show = [l_idx - 1]
+                    else:
+                        layers_to_show = list(range(p_dict['L']))
 
-                with st.spinner("Affichage des transformées de Fourier..."):
+                    with st.spinner("Affichage des transformées de Fourier..."):
      
-                    fig = plot_fft_cascade(
-                        Z_s, X_s,           
-                        Z_c, X_c,           
-                        "SIREN", 
-                        p_dict['name_c'], 
-                        layers_to_show
-                    )
-                    st.pyplot(fig)
+                        fig = plot_fft_cascade(
+                            Z_s, X_s,           
+                            Z_c, X_c,           
+                            "SIREN", 
+                            p_dict['name_c'], 
+                            layers_to_show
+                        )
+                        st.pyplot(fig)
 
             elif sub_mode == "Distribution des Gradients":
                 st.subheader("Analyse des Gradients ")
@@ -300,10 +306,21 @@ def main():
                     st.pyplot(fig)
 
             elif sub_mode == "Variance":
-                st.pyplot(plot_variance_progression(Z_s, p_dict['w0'], p_dict['c'], b=p_dict['b']))
+                st.subheader("Analyse de la propagation de la variance")
+                st.pyplot(plot_variance_progression(Z_s, Z_c, p_dict))
 
             elif sub_mode == "Distance de Kolmogorov":
-                st.pyplot(plot_ks_distance(Z_s, b=p_dict['b'], c=p_dict['c']))   
+                st.subheader("Convergence vers les lois limites")
+                
+                # Appel de la fonction combinée avec Z et X
+                fig_ks = plot_combined_ks_distances(
+                    Z_list=Z_s, 
+                    X_list=X_s, 
+                    b=p_dict['b'], 
+                    c=p_dict['c']
+                )
+                
+                st.pyplot(fig_ks)
 
     elif app_mode == "Image Fitting":
         st.title("Reconstruction & Analyse Physique")
