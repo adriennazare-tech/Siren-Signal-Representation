@@ -1,24 +1,26 @@
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
+# 🎭 Étude des Réseaux SIREN (Sinusoidal Representation Networks)
 
-# Projet de Deep Learning
+Ce projet a été réalisé par **Adrien NAZARE** et **Adam ROZENTALIS** dans le cadre du cours de projet de deep learning dirigé par Guillermo Durand par **Adrien NAZARE** et **Adam ROZENTALIS**. 
 
-This repository serves as a template for the class "Projet de Deep Learning" in the 1st year of Master "Mathématiques et Intelligence Artificielle" of Université Paris-Saclay. Namely, this repository contains the code of a toy [Streamlit](https://streamlit.io/) application.
+L'objectif est d'explorer les **Représentations Neuronales Implicites** via l'architecture **SIREN**, introduite par Sitzmann et al. Contrairement aux réseaux classiques (ReLU), les SIREN utilisent des fonctions d'activation périodiques permettant de capturer les détails haute fréquence des signaux.
 
-## Content
+---
 
-The user can select four modes in the sidebar of the application.
-1. "Home data regression" performs regression with three simple methods (using decision trees and random forests) on a simple dataset of house prices. The user can select which covariates to use in the regression and visualize the validation MAE of the three methods.
-2. "Sinus regression" performs regression with polynomial regression and decision trees on the sinus function, with noise. The user can select the density of noisy data points and the order of the polynoms. The regressors are then plotted, with the data points.
-3. "Show MNIST" visualizes 6 random data points of the MNIST dataset and their labels.
-4. "Deep Learning" trains (or use trained weights if available) a simple artificial neuron network on the Fashion MNIST datatset, displays the architecture, displays the curves of train and test loss and train and test accuracy, and finally visualizes 6 random data points of the dataset, their labels and the predicition of the model. The user can select the number of hidden layers (it is a simple MLP), the level of dropout and the number of epochs. If trained weights for the same combination of hidden layers and dropout are found, they are used. If not, a model is trained and then the weights and metrics are saved. In the former case, a button allows the user to delete the trained weights and metrics and start a new training.
+## Présentation du Projet
 
-## Miscellaneous
+L'application est divisée en deux modules principaux :
 
-### pre-commit usage
+1.  **Étude de l'Initialisation** : Une analyse mathématique et empirique montrant l'initialisation spécifique de SIREN  qui permet d'éviter la disparition ou l'explosion du gradient.
+2.  **Fitting d'Image** : Une démonstration pratique où le réseau apprend à reconstruire une image pixel par pixel. Grâce aux propriétés de l'activation sinus, nous extrayons de manière analytique les dérivées d'ordre 1 (Gradients) et 2 (Laplacien) de l'image.
 
-This repo uses 2 pre-commit hooks: black and flake8. Contributors should install pre-commit (`pip install pre-commit`) and then run `pre-commit install` to install the hooks. Update the hooks with `pre-commit autoupdate`.
+---
 
-### docstrings
+## Installation
 
-This repo uses the [numpy style guide](https://numpydoc.readthedocs.io/en/latest/format.html) for its docstrings.
+### 1. Prérequis
+Assurez-vous d'avoir **Python 3.8+** installé sur votre machine.
+
+### 2. Dépendances
+Installez les bibliothèques nécessaires via `pip` :
+```bash
+pip install streamlit torch torchvision numpy matplotlib scipy

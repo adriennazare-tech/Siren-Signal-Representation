@@ -1,30 +1,23 @@
-.DS_Store
-
-# venv.md Quarto document
-venv_files
-venv.html
-
-# Code environnement
-.vscode
-.idea
-
 # Python
-**/__pycache__
-sandbox.py
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
 
-# Jupyter Notebooks
-.ipynb_checkpoints
-**/*.ipynb
+# Streamlit
+.streamlit/config.toml
+! .streamlit/secrets.toml
 
-# Large files
+# Data & Models
 *.png
+*.jpg
+*.jpeg
+*.pt
+*.pth
+outputs/
 
-# Data files
-data
-saved_models
-# *.csv
-*.parquet
-yolov3*
-
-# Documentation
-build
+# OS
+.DS_Store
+Thumbs.db
